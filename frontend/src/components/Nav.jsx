@@ -14,7 +14,7 @@ export default function Nav() {
   return (
     <nav>
       <div className="inner">
-        <span className="logo">WarDrobe AI</span>
+        <span className="logo">WarDrobe ML</span>
         <NavLink to="/"         className={cls}>Dashboard</NavLink>
         <NavLink to="/wardrobe" className={cls}>Wardrobe</NavLink>
         <NavLink to="/add"      className={cls}>+ Add Item</NavLink>
