@@ -1,0 +1,52 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wardrobe
+      POSTGRES_USER: wardrobe
+      POSTGRES_PASSWORD: wardrobe123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wardrobe"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://wardrobe:wardrobe123@db:5432/wardrobe
+      SECRET_KEY: change-me-in-production-32chars
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+      ML_SERVICE_URL: http://ml-service:8001
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ml-service:
+    build: ./ml-service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - uploads:/app/uploads
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  uploads:
