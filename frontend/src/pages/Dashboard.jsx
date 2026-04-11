@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
 
@@ -11,6 +11,9 @@ export default function Dashboard() {
   const [saved, setSaved] = useState(false)
   const [city, setCity] = useState('')
   const [showCityInput, setShowCityInput] = useState(false)
+  const [geoLoading, setGeoLoading] = useState(false)
+  const [citySuggestions, setCitySuggestions] = useState([])
+  const searchTimer = useRef(null)
   const navigate = useNavigate()
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
@@ -39,6 +42,55 @@ export default function Dashboard() {
     await api.post('/api/v1/weather/city', { city: city.trim() })
     setShowCityInput(false)
     setCity('')
+    setCitySuggestions([])
+    load()
+  }
+
+  const detectLocation = () => {
+    if (!navigator.geolocation) return
+    setGeoLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await api.post('/api/v1/weather/location', {
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+          })
+          setShowCityInput(false)
+          load()
+        } catch (e) {
+          console.error(e)
+        } finally {
+          setGeoLoading(false)
+        }
+      },
+      () => setGeoLoading(false),
+      { timeout: 10000 }
+    )
+  }
+
+  const handleCityInput = (val) => {
+    setCity(val)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (!val.trim() || val.length < 2) {
+      setCitySuggestions([])
+      return
+    }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/v1/weather/search?q=${encodeURIComponent(val)}`)
+        setCitySuggestions(res.data || [])
+      } catch {
+        setCitySuggestions([])
+      }
+    }, 400)
+  }
+
+  const pickSuggestion = async (s) => {
+    setCitySuggestions([])
+    setCity('')
+    setShowCityInput(false)
+    await api.post('/api/v1/weather/location', { lat: s.lat, lon: s.lon })
     load()
   }
 
@@ -76,9 +128,9 @@ export default function Dashboard() {
                   <div style={{ marginTop: 8, opacity: .7, fontSize: 13 }}>
                     Feels like {Math.round(weather.feels_like ?? 15)}°C
                     &nbsp;·&nbsp;
-                    💨 {Math.round(weather.wind_speed ?? 0)} m/s
+                    {Math.round(weather.wind_speed ?? 0)} m/s
                   </div>
-                  <div style={{ marginTop: 4, opacity: .7, fontSize: 13 }}>📍 {weather.city || '—'}</div>
+                  <div style={{ marginTop: 4, opacity: .7, fontSize: 13 }}>{weather.city || '—'}</div>
                 </div>
                 {weather.icon && (
                   <img
@@ -89,29 +141,64 @@ export default function Dashboard() {
                 )}
               </div>
 
-              <button
-                className="btn btn-secondary btn-sm"
-                style={{ marginTop: 14 }}
-                onClick={() => setShowCityInput(v => !v)}
-              >
-                Change city
-              </button>
+              <div className="flex gap-8" style={{ marginTop: 14 }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => { setShowCityInput(v => !v); setCitySuggestions([]) }}
+                >
+                  Change city
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={detectLocation}
+                  disabled={geoLoading}
+                >
+                  {geoLoading ? '…' : 'Detect'}
+                </button>
+              </div>
 
               {showCityInput && (
-                <div className="flex gap-8" style={{ marginTop: 10 }}>
-                  <input
-                    value={city}
-                    onChange={e => setCity(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && setUserCity()}
-                    placeholder="City name…"
-                    style={{
-                      flex: 1, padding: '8px 10px', borderRadius: 6,
-                      border: '1px solid rgba(255,255,255,.3)',
-                      background: 'rgba(255,255,255,.1)',
-                      color: '#fff', outline: 'none', fontSize: 14,
-                    }}
-                  />
-                  <button className="btn btn-secondary btn-sm" onClick={setUserCity}>OK</button>
+                <div style={{ marginTop: 10, position: 'relative' }}>
+                  <div className="flex gap-8">
+                    <input
+                      value={city}
+                      onChange={e => handleCityInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && setUserCity()}
+                      placeholder="Search city…"
+                      autoFocus
+                      style={{
+                        flex: 1, padding: '8px 10px', borderRadius: 6,
+                        border: '1px solid rgba(255,255,255,.3)',
+                        background: 'rgba(255,255,255,.1)',
+                        color: '#fff', outline: 'none', fontSize: 14,
+                      }}
+                    />
+                    <button className="btn btn-secondary btn-sm" onClick={setUserCity}>OK</button>
+                  </div>
+                  {citySuggestions.length > 0 && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0,
+                      background: '#1e2a3a', borderRadius: 8, marginTop: 4,
+                      border: '1px solid rgba(255,255,255,.15)', zIndex: 20,
+                      overflow: 'hidden',
+                    }}>
+                      {citySuggestions.map((s, i) => (
+                        <div
+                          key={i}
+                          onClick={() => pickSuggestion(s)}
+                          style={{
+                            padding: '9px 12px', cursor: 'pointer', fontSize: 13,
+                            color: '#fff', borderBottom: i < citySuggestions.length - 1
+                              ? '1px solid rgba(255,255,255,.08)' : 'none',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.1)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          {s.name}{s.state ? `, ${s.state}` : ''}, {s.country}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>

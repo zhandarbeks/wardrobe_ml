@@ -78,6 +78,11 @@ class CityBody(BaseModel):
     city: str
 
 
+class LocationBody(BaseModel):
+    lat: float
+    lon: float
+
+
 @router.post("/city")
 async def set_city(
     body: CityBody,
@@ -92,3 +97,47 @@ async def set_city(
     db.commit()
     _cache.pop(user.id, None)
     return {"ok": True}
+
+
+@router.post("/location")
+async def set_location(
+    body: LocationBody,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Save coordinates from browser Geolocation API."""
+    db.query(User).filter(User.id == user.id).update({
+        "latitude": body.lat,
+        "longitude": body.lon,
+        "city": None,
+    })
+    db.commit()
+    _cache.pop(user.id, None)
+    return {"ok": True}
+
+
+@router.get("/search")
+async def search_cities(q: str = ""):
+    """Proxy to OpenWeather Geocoding — returns up to 5 city suggestions."""
+    if not q or len(q.strip()) < 2:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            geo = (await c.get(
+                "http://api.openweathermap.org/geo/1.0/direct",
+                params={"q": q.strip(), "limit": 5, "appid": KEY},
+            )).json()
+        if not isinstance(geo, list):
+            return []
+        return [
+            {
+                "name": g["name"],
+                "country": g.get("country", ""),
+                "state": g.get("state", ""),
+                "lat": g["lat"],
+                "lon": g["lon"],
+            }
+            for g in geo
+        ]
+    except Exception:
+        return []
