@@ -55,6 +55,8 @@ class WardrobeItem(Base):
     image_url = Column(Text, nullable=True)
     image_no_bg_url = Column(Text, nullable=True)
     ml_confidence = Column(Float, nullable=True)
+    # JSON-encoded 128-dim EfficientNetB0 embedding for ModelB compatibility scoring
+    embedding = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="items")

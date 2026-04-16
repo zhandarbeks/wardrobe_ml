@@ -1,7 +1,8 @@
-from typing import List, Optional
-from models import WardrobeItem, Preference
+import json
 import itertools
 import random
+from typing import List, Optional
+from models import WardrobeItem, Preference
 
 COLOR_HUES = {
     "black": -1, "white": -1, "gray": -1, "grey": -1,
@@ -152,6 +153,8 @@ def recommend_outfits(
                     "color": i.color,
                     "image_url": i.image_url,
                     "image_no_bg_url": i.image_no_bg_url,
+                    # embedding passed through for ModelB rescoring (not rendered in UI)
+                    "embedding": i.embedding,
                 }
                 for i in outfit_items
             ],
@@ -162,3 +165,54 @@ def recommend_outfits(
             break
 
     return results
+
+
+async def ml_rescore_outfits(outfits: list, ml_url: str) -> list:
+    """
+    Re-score outfit list using ModelB pairwise compatibility via ml-service.
+    Falls back to heuristic score silently if ml-service is unavailable.
+    Embeddings must be stored in each item dict under key 'embedding'.
+    """
+    import httpx
+
+    def _decode(emb_str) -> Optional[list]:
+        if not emb_str:
+            return None
+        try:
+            decoded = json.loads(emb_str) if isinstance(emb_str, str) else emb_str
+            return decoded if len(decoded) == 128 else None
+        except Exception:
+            return None
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            for outfit in outfits:
+                items = outfit["items"]
+                embeddings = [_decode(i.get("embedding")) for i in items]
+                valid = [(i, e) for i, e in enumerate(embeddings) if e is not None]
+                if len(valid) < 2:
+                    continue
+                pairs = list(itertools.combinations(valid, 2))
+                scores = []
+                for (_, e1), (_, e2) in pairs:
+                    try:
+                        resp = await client.post(
+                            f"{ml_url}/compatibility",
+                            json={"embedding1": e1, "embedding2": e2},
+                        )
+                        if resp.status_code == 200:
+                            scores.append(resp.json()["score"])
+                    except Exception:
+                        pass
+                if scores:
+                    outfit["score"] = round(sum(scores) / len(scores), 3)
+    except Exception:
+        pass  # keep original heuristic scores
+
+    # Remove internal embedding field before returning to client
+    for outfit in outfits:
+        for item in outfit["items"]:
+            item.pop("embedding", None)
+
+    outfits.sort(key=lambda x: x["score"], reverse=True)
+    return outfits

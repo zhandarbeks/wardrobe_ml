@@ -9,11 +9,12 @@ from typing import Optional
 from database import get_db
 from models import User, WardrobeItem, Outfit, Preference
 from deps import get_current_user
-from recommend import recommend_outfits
+from recommend import recommend_outfits, ml_rescore_outfits
 
 router = APIRouter(prefix="/api/v1/outfits", tags=["outfits"])
 
 KEY = os.getenv("OPENWEATHER_API_KEY", "")
+ML_URL = os.getenv("ML_SERVICE_URL", "http://ml-service:8001")
 _wcache: dict = {}
 
 
@@ -55,6 +56,8 @@ async def recommend(
         return {"outfits": [], "weather": weather, "message": "Add clothes first"}
 
     outfits = recommend_outfits(items, prefs, weather)
+    # Re-score using ModelB pairwise compatibility if embeddings are stored
+    outfits = await ml_rescore_outfits(outfits, ML_URL)
     return {"outfits": outfits, "weather": weather}
 
 

@@ -101,6 +101,11 @@ async def analyze(
     ))
     db.commit()
 
+    # Serialize embedding as JSON string (128 floats → stored in WardrobeItem later)
+    import json as _json
+    embedding_raw = ml.get("embedding", [])
+    embedding_str = _json.dumps(embedding_raw) if embedding_raw else None
+
     return {
         "image_url": image_url,
         "image_no_bg_url": no_bg_url,
@@ -108,6 +113,7 @@ async def analyze(
         "subcategory": ml.get("subcategory", ""),
         "color": ml.get("color", "black"),
         "confidence": ml.get("confidence", 0.0),
+        "embedding": embedding_str,
     }
 
 
@@ -124,6 +130,7 @@ class ItemCreate(BaseModel):
     image_url: Optional[str] = None
     image_no_bg_url: Optional[str] = None
     ml_confidence: Optional[float] = None
+    embedding: Optional[str] = None  # JSON-encoded 128-dim float array
 
 
 @router.post("/items")
@@ -147,6 +154,7 @@ def create_item(
         image_url=body.image_url,
         image_no_bg_url=body.image_no_bg_url,
         ml_confidence=body.ml_confidence,
+        embedding=body.embedding,
     )
     db.add(item)
     db.commit()

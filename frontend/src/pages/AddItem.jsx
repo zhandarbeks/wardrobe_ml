@@ -21,6 +21,7 @@ export default function AddItem() {
   const [preview, setPreview] = useState(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [mlResult, setMlResult] = useState(null)
+  const [mlEmbedding, setMlEmbedding] = useState(null)
   const [form, setForm] = useState({
     name: '', category: 'top', subcategory: '',
     color: 'black', brand: '', material: '', styles: '',
@@ -44,6 +45,7 @@ export default function AddItem() {
     try {
       const { data } = await api.post('/api/v1/wardrobe/analyze', fd)
       setMlResult(data)
+      setMlEmbedding(data.embedding || null)
       setForm(prev => ({
         ...prev,
         category: data.category || prev.category,
@@ -70,6 +72,7 @@ export default function AddItem() {
         temp_min: Number(form.temp_min),
         temp_max: Number(form.temp_max),
         ml_confidence: mlResult?.confidence ?? null,
+        embedding: mlEmbedding,
       })
       navigate('/wardrobe')
     } catch (err) {
@@ -130,7 +133,7 @@ export default function AddItem() {
 
           {analyzing && (
             <div className="alert alert-info mt-8">
-              🤖 Analysing with AI… (background removal + CLIP classification + K-Means colour)
+              🤖 Analysing with AI… (U-Net segmentation + EfficientNetB0 classification + K-Means colour)
             </div>
           )}
 
