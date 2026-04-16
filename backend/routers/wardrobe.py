@@ -107,7 +107,7 @@ async def analyze(
 
     ml: dict = {}
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             with open(filepath, "rb") as f:
                 resp = await client.post(
                     f"{ML_URL}/analyze",

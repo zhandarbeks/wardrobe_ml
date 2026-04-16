@@ -11,6 +11,26 @@ const COLOR_HEX = {
   beige: '#f5f5dc', brown: '#8b4513', camel: '#c19a6b',
 }
 
+// Handles image_no_bg_url → image_url → emoji fallback chain
+function ItemThumb({ item }) {
+  const [src, setSrc] = useState(item.image_no_bg_url || item.image_url || null)
+  const fallback = item.image_no_bg_url ? item.image_url : null
+
+  if (!src) return <span style={{ fontSize: 52, opacity: .3 }}>👕</span>
+
+  return (
+    <img
+      className="thumb"
+      src={src}
+      alt={item.name}
+      onError={() => {
+        if (fallback && src !== fallback) setSrc(fallback)
+        else setSrc(null)
+      }}
+    />
+  )
+}
+
 export default function Wardrobe() {
   const [items, setItems] = useState([])
   const [filter, setFilter] = useState('all')
@@ -91,16 +111,7 @@ export default function Wardrobe() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 overflow: 'hidden',
               }}>
-                {item.image_no_bg_url || item.image_url ? (
-                  <img
-                    className="thumb"
-                    src={item.image_no_bg_url || item.image_url}
-                    alt={item.name}
-                    onError={e => { e.target.style.display = 'none' }}
-                  />
-                ) : (
-                  <span style={{ fontSize: 52, opacity: .3 }}>👕</span>
-                )}
+                <ItemThumb item={item} />
               </div>
               <div className="info">
                 <h4>{item.name}</h4>
