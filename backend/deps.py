@@ -1,3 +1,4 @@
+import uuid
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -14,9 +15,9 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     try:
-        payload = decode_token(creds.credentials)
-        user_id = int(payload.get("sub", 0))
-    except (JWTError, ValueError):
+        payload  = decode_token(creds.credentials)
+        user_id  = uuid.UUID(payload.get("sub", ""))
+    except (JWTError, ValueError, AttributeError):
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user = db.query(User).filter(User.id == user_id).first()
