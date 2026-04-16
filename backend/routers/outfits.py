@@ -175,6 +175,65 @@ def list_outfits(
     return result
 
 
+class OutfitUpdate(BaseModel):
+    name:     Optional[str] = None
+    item_ids: Optional[str] = None   # comma-separated; replaces all items if provided
+
+
+@router.patch("/{oid}")
+def update_outfit(
+    oid: str,
+    body: OutfitUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        outfit_uuid = _uuid.UUID(oid)
+    except ValueError:
+        raise HTTPException(400, "Invalid outfit id")
+
+    o = db.query(Outfit).filter(Outfit.id == outfit_uuid, Outfit.user_id == user.id).first()
+    if not o:
+        raise HTTPException(404, "Not found")
+
+    if body.name is not None:
+        o.name = body.name
+
+    if body.item_ids is not None:
+        # remove old items
+        db.query(OutfitItem).filter(OutfitItem.outfit_id == o.id).delete()
+        db.flush()
+        used_layers: set = set()
+        for id_str in body.item_ids.split(","):
+            id_str = id_str.strip()
+            if not id_str:
+                continue
+            try:
+                item_uuid = _uuid.UUID(id_str)
+            except ValueError:
+                continue
+            item = (
+                db.query(WardrobeItem)
+                .options(joinedload(WardrobeItem.category_ref))
+                .filter(WardrobeItem.id == item_uuid, WardrobeItem.user_id == user.id)
+                .first()
+            )
+            if not item or not item.category_ref:
+                continue
+            try:
+                layer = Layer(item.category_ref.name)
+            except ValueError:
+                layer = Layer.top
+            if layer in used_layers:
+                continue
+            used_layers.add(layer)
+            db.add(OutfitItem(outfit_id=o.id, item_id=item_uuid, layer=layer))
+
+    o.is_auto_generated = False
+    db.commit()
+    return {"ok": True}
+
+
 @router.delete("/{oid}")
 def delete_outfit(
     oid: str,
