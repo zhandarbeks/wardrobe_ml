@@ -2,20 +2,104 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
 
+// stat box styles
+const statBox   = { flex: 1, padding: '10px 8px', borderRadius: 10, background: '#fafafa', border: '1px solid #eee', textAlign: 'center' }
+const statLabel = { fontSize: 10, color: '#999', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }
+const statVal   = { fontWeight: 700, fontSize: 16 }
+
+// category → display order / size weight
+const CAT_ORDER = { outer: 0, top: 1, mid: 2, bottom: 3, footwear: 4, accessory: 5 }
+
+// Collage grid: top-layer items side by side, bottom full-width, footwear+accessory small row
+function OutfitCollage({ items }) {
+  const sorted = [...items].sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9))
+
+  const layers   = sorted.filter(i => ['outer','top','mid'].includes(i.category))
+  const bottoms  = sorted.filter(i => i.category === 'bottom')
+  const smalls   = sorted.filter(i => ['footwear','accessory'].includes(i.category))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* top row: jackets + tops side by side */}
+      {layers.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(layers.length, 3)}, 1fr)`, gap: 8 }}>
+          {layers.map(item => <CollageCell key={item.id} item={item} height={200} />)}
+        </div>
+      )}
+      {/* bottom: full width */}
+      {bottoms.map(item => <CollageCell key={item.id} item={item} height={160} />)}
+      {/* footwear + accessories: smaller row */}
+      {smalls.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(smalls.length, 3)}, 1fr)`, gap: 8 }}>
+          {smalls.map(item => <CollageCell key={item.id} item={item} height={120} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CollageCell({ item, height }) {
+  return (
+    <div style={{ position: 'relative', height, borderRadius: 14, overflow: 'hidden', background: '#f5f5f5' }}>
+      <ItemImage item={item} />
+      {/* name label at bottom */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        padding: '20px 10px 8px',
+        background: 'linear-gradient(transparent, rgba(0,0,0,.45))',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+      }}>
+        <span style={{
+          fontSize: 11, fontWeight: 600, color: '#fff',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{item.name}</span>
+        <span style={{
+          fontSize: 10, color: 'rgba(255,255,255,.75)',
+          background: 'rgba(0,0,0,.25)', borderRadius: 4,
+          padding: '1px 5px', flexShrink: 0, marginLeft: 6, textTransform: 'capitalize',
+        }}>{item.category}</span>
+      </div>
+    </div>
+  )
+}
+
+function ItemImage({ item }) {
+  const [src, setSrc] = useState(item.image_no_bg_url || item.image_url || null)
+  const fallback = item.image_no_bg_url ? item.image_url : null
+
+  const imgStyle = { width: '100%', height: '100%', objectFit: 'contain' }
+
+  if (!src) return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontSize: 48, opacity: .2 }}>👕</span>
+    </div>
+  )
+  return (
+    <img
+      src={src}
+      alt={item.name}
+      style={imgStyle}
+      onError={() => {
+        if (fallback && src !== fallback) setSrc(fallback)
+        else setSrc(null)
+      }}
+    />
+  )
+}
+
 export default function Dashboard() {
-  const [weather, setWeather] = useState(null)
-  const [outfits, setOutfits] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [outfitIdx, setOutfitIdx] = useState(0)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [city, setCity] = useState('')
-  const [showCityInput, setShowCityInput] = useState(false)
-  const [geoLoading, setGeoLoading] = useState(false)
+  const [weather,         setWeather]         = useState(null)
+  const [outfits,         setOutfits]         = useState([])
+  const [loading,         setLoading]         = useState(true)
+  const [outfitIdx,       setOutfitIdx]       = useState(0)
+  const [saving,          setSaving]          = useState(false)
+  const [saved,           setSaved]           = useState(false)
+  const [city,            setCity]            = useState('')
+  const [showCityInput,   setShowCityInput]   = useState(false)
+  const [geoLoading,      setGeoLoading]      = useState(false)
   const [citySuggestions, setCitySuggestions] = useState([])
   const searchTimer = useRef(null)
-  const navigate = useNavigate()
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const navigate    = useNavigate()
 
   const load = async () => {
     setLoading(true)
@@ -50,43 +134,33 @@ export default function Dashboard() {
     if (!navigator.geolocation) return
     setGeoLoading(true)
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      async pos => {
         try {
-          await api.post('/api/v1/weather/location', {
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-          })
+          await api.post('/api/v1/weather/location', { lat: pos.coords.latitude, lon: pos.coords.longitude })
           setShowCityInput(false)
           load()
-        } catch (e) {
-          console.error(e)
         } finally {
           setGeoLoading(false)
         }
       },
       () => setGeoLoading(false),
-      { timeout: 10000 }
+      { timeout: 10000 },
     )
   }
 
-  const handleCityInput = (val) => {
+  const handleCityInput = val => {
     setCity(val)
     if (searchTimer.current) clearTimeout(searchTimer.current)
-    if (!val.trim() || val.length < 2) {
-      setCitySuggestions([])
-      return
-    }
+    if (!val.trim() || val.length < 2) { setCitySuggestions([]); return }
     searchTimer.current = setTimeout(async () => {
       try {
         const res = await api.get(`/api/v1/weather/search?q=${encodeURIComponent(val)}`)
         setCitySuggestions(res.data || [])
-      } catch {
-        setCitySuggestions([])
-      }
+      } catch { setCitySuggestions([]) }
     }, 400)
   }
 
-  const pickSuggestion = async (s) => {
+  const pickSuggestion = async s => {
     setCitySuggestions([])
     setCity('')
     setShowCityInput(false)
@@ -115,191 +189,158 @@ export default function Dashboard() {
 
   return (
     <div className="page">
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }}>
 
-      <div className="grid grid-2" style={{ marginBottom: 24, alignItems: 'start' }}>
-        {/* Weather card */}
-        <div className="weather">
-          {weather ? (
-            <>
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="temp">{Math.round(weather.temp ?? 15)}°C</div>
-                  <div className="desc">{weather.description}</div>
-                  <div style={{ marginTop: 8, opacity: .7, fontSize: 13 }}>
-                    Feels like {Math.round(weather.feels_like ?? 15)}°C
-                    &nbsp;·&nbsp;
-                    {Math.round(weather.wind_speed ?? 0)} m/s
+        {/* ── LEFT COLUMN ─────────────────────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Weather */}
+          <div className="weather">
+            {weather ? (
+              <>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="temp">{Math.round(weather.temp ?? 15)}°C</div>
+                    <div className="desc">{weather.description}</div>
+                    <div style={{ marginTop: 8, opacity: .7, fontSize: 13 }}>
+                      Feels like {Math.round(weather.feels_like ?? 15)}°C
+                      &nbsp;·&nbsp;
+                      {Math.round(weather.wind_speed ?? 0)} m/s
+                    </div>
+                    <div style={{ marginTop: 4, opacity: .7, fontSize: 13 }}>{weather.city || '—'}</div>
                   </div>
-                  <div style={{ marginTop: 4, opacity: .7, fontSize: 13 }}>{weather.city || '—'}</div>
+                  {weather.icon && (
+                    <img src={`https://openweathermap.org/img/wn/${weather.icon}@2x.png`} width={64} alt="" />
+                  )}
                 </div>
-                {weather.icon && (
-                  <img
-                    src={`https://openweathermap.org/img/wn/${weather.icon}@2x.png`}
-                    width={64}
-                    alt=""
-                  />
+
+                <div className="flex gap-8" style={{ marginTop: 14 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setShowCityInput(v => !v); setCitySuggestions([]) }}>
+                    Change city
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={detectLocation} disabled={geoLoading}>
+                    {geoLoading ? '…' : '📍 Detect'}
+                  </button>
+                </div>
+
+                {showCityInput && (
+                  <div style={{ marginTop: 10, position: 'relative' }}>
+                    <div className="flex gap-8">
+                      <input
+                        value={city}
+                        onChange={e => handleCityInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && setUserCity()}
+                        placeholder="Search city…"
+                        autoFocus
+                        style={{
+                          flex: 1, padding: '8px 10px', borderRadius: 6,
+                          border: '1px solid rgba(255,255,255,.3)',
+                          background: 'rgba(255,255,255,.1)',
+                          color: '#fff', outline: 'none', fontSize: 14,
+                        }}
+                      />
+                      <button className="btn btn-secondary btn-sm" onClick={setUserCity}>OK</button>
+                    </div>
+                    {citySuggestions.length > 0 && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0,
+                        background: '#1e2a3a', borderRadius: 8, marginTop: 4,
+                        border: '1px solid rgba(255,255,255,.15)', zIndex: 20, overflow: 'hidden',
+                      }}>
+                        {citySuggestions.map((s, i) => (
+                          <div
+                            key={i}
+                            onClick={() => pickSuggestion(s)}
+                            style={{
+                              padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#fff',
+                              borderBottom: i < citySuggestions.length - 1 ? '1px solid rgba(255,255,255,.08)' : 'none',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.1)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            {s.name}{s.state ? `, ${s.state}` : ''}, {s.country}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ opacity: .6 }}>Loading weather…</div>
+            )}
+          </div>
+
+          {/* Quick Actions */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <h2 style={{ margin: 0, fontSize: 16 }}>Quick Actions</h2>
+            <button className="btn btn-primary" onClick={() => navigate('/add')}>+ Add Clothes</button>
+            <button className="btn btn-secondary" onClick={() => navigate('/wardrobe')}>My Wardrobe</button>
+            <button className="btn btn-secondary" onClick={() => navigate('/outfits')}>Saved Outfits</button>
+            <button className="btn btn-secondary" onClick={load}>🔄 Refresh</button>
+          </div>
+        </div>
+
+        {/* ── RIGHT COLUMN — outfit ────────────────────────────── */}
+        <div>
+          <h2 style={{ marginBottom: 16 }}>Today's Outfit</h2>
+
+          {loading ? (
+            <div className="card text-center text-gray" style={{ padding: 60 }}>
+              Generating outfit for the current weather…
+            </div>
+          ) : !current ? (
+            <div className="card text-center" style={{ padding: 60 }}>
+              <p className="text-gray">No outfit suggestions — add some clothes first.</p>
+              <button className="btn btn-primary mt-16" onClick={() => navigate('/add')}>
+                Add clothes to get started →
+              </button>
+            </div>
+          ) : (
+            <div className="card" style={{ padding: 20 }}>
+              <OutfitCollage items={current.items} />
+
+              {/* Score + T target */}
+              <div style={{ display: 'flex', gap: 8, margin: '16px 0' }}>
+                <div style={statBox}>
+                  <div style={statLabel}>SCORE</div>
+                  <div style={statVal}>⭐ {current.score.toFixed(2)}</div>
+                </div>
+                <div style={statBox}>
+                  <div style={statLabel}>T TARGET</div>
+                  <div style={statVal}>🌡 {current.t_target}°C</div>
+                </div>
+                {outfits.length > 1 && (
+                  <div style={statBox}>
+                    <div style={statLabel}>OPTION</div>
+                    <div style={statVal}>{outfitIdx + 1} / {outfits.length}</div>
+                  </div>
                 )}
               </div>
 
-              <div className="flex gap-8" style={{ marginTop: 14 }}>
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10 }}>
                 <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => { setShowCityInput(v => !v); setCitySuggestions([]) }}
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={() => { setOutfitIdx(i => (i + 1) % outfits.length); setSaved(false) }}
+                  disabled={outfits.length <= 1}
                 >
-                  Change city
+                  🔄 Regenerate
                 </button>
                 <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={detectLocation}
-                  disabled={geoLoading}
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={saveOutfit}
+                  disabled={saving || saved}
                 >
-                  {geoLoading ? '…' : 'Detect'}
+                  {saved ? '✅ Saved!' : saving ? '…' : '💾 Save outfit'}
                 </button>
               </div>
-
-              {showCityInput && (
-                <div style={{ marginTop: 10, position: 'relative' }}>
-                  <div className="flex gap-8">
-                    <input
-                      value={city}
-                      onChange={e => handleCityInput(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && setUserCity()}
-                      placeholder="Search city…"
-                      autoFocus
-                      style={{
-                        flex: 1, padding: '8px 10px', borderRadius: 6,
-                        border: '1px solid rgba(255,255,255,.3)',
-                        background: 'rgba(255,255,255,.1)',
-                        color: '#fff', outline: 'none', fontSize: 14,
-                      }}
-                    />
-                    <button className="btn btn-secondary btn-sm" onClick={setUserCity}>OK</button>
-                  </div>
-                  {citySuggestions.length > 0 && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, right: 0,
-                      background: '#1e2a3a', borderRadius: 8, marginTop: 4,
-                      border: '1px solid rgba(255,255,255,.15)', zIndex: 20,
-                      overflow: 'hidden',
-                    }}>
-                      {citySuggestions.map((s, i) => (
-                        <div
-                          key={i}
-                          onClick={() => pickSuggestion(s)}
-                          style={{
-                            padding: '9px 12px', cursor: 'pointer', fontSize: 13,
-                            color: '#fff', borderBottom: i < citySuggestions.length - 1
-                              ? '1px solid rgba(255,255,255,.08)' : 'none',
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.1)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          {s.name}{s.state ? `, ${s.state}` : ''}, {s.country}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ opacity: .6 }}>Loading weather…</div>
+            </div>
           )}
         </div>
-
-        {/* Quick actions */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <h2 style={{ margin: 0 }}>Quick Actions</h2>
-          <button className="btn btn-primary" onClick={() => navigate('/add')}>
-            Add Clothes
-          </button>
-          <button className="btn btn-secondary" onClick={() => navigate('/wardrobe')}>
-            View Wardrobe
-          </button>
-          <button className="btn btn-secondary" onClick={() => navigate('/outfits')}>
-            Saved Outfits
-          </button>
-          <button className="btn btn-secondary" onClick={load}>
-            Refresh
-          </button>
-        </div>
       </div>
-
-      {/* Outfit recommendation */}
-      <h2>Today's Outfit Recommendation</h2>
-
-      {loading ? (
-        <div className="card text-center text-gray" style={{ padding: 40 }}>
-          Generating outfit for the current weather…
-        </div>
-      ) : !current ? (
-        <div className="card text-center" style={{ padding: 40 }}>
-          <p className="text-gray">No outfit suggestions yet — your wardrobe might be empty.</p>
-          <button className="btn btn-primary mt-16" onClick={() => navigate('/add')}>
-            Add clothes to get started →
-          </button>
-        </div>
-      ) : (
-        <div className="card">
-          <div className="flex justify-between items-center mb-16" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <div className="flex gap-8">
-              <span className="tag">⭐ Score: {current.score.toFixed(2)}</span>
-              <span className="tag">🌡 T target: {current.t_target}°C</span>
-              <span className="tag">{outfits.length} option{outfits.length !== 1 ? 's' : ''}</span>
-            </div>
-            <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-              {outfits.length > 1 && (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => { setOutfitIdx(i => (i + 1) % outfits.length); setSaved(false) }}
-                >
-                  Next option ({outfitIdx + 1}/{outfits.length})
-                </button>
-              )}
-              <button className="btn btn-secondary btn-sm" onClick={load}>🔄 Regenerate</button>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={saveOutfit}
-                disabled={saving || saved}
-              >
-                {saved ? '✅ Saved!' : saving ? '…' : '💾 Save outfit'}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-12">
-            {current.items.map(item => (
-              <div key={item.id} style={{ textAlign: 'center', width: 90 }}>
-                <div style={{
-                  width: 90, height: 90, borderRadius: 12,
-                  background: '#f8f8f8', overflow: 'hidden',
-                  border: '1px solid #eee', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {item.image_no_bg_url || item.image_url ? (
-                    <img
-                      src={item.image_no_bg_url || item.image_url}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={e => { e.target.style.display = 'none' }}
-                      alt={item.name}
-                    />
-                  ) : (
-                    <span style={{ fontSize: 32 }}>👕</span>
-                  )}
-                </div>
-                <div style={{
-                  fontSize: 11, color: '#555', marginTop: 6,
-                  overflow: 'hidden', textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap', maxWidth: 90,
-                }}>
-                  {item.name}
-                </div>
-                <span className="tag" style={{ fontSize: 10, marginTop: 2 }}>{item.category}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
