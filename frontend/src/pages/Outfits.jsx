@@ -208,8 +208,26 @@ function OutfitModal({ outfit, onClose, onSaved }) {
 }
 
 // ── outfit card ───────────────────────────────────────────────────────────────
-function OutfitCard({ outfit, onEdit, onDelete }) {
+function OutfitCard({ outfit, onEdit, onDelete, onWorn }) {
+  const [wornToday, setWornToday] = useState(
+    outfit.used_at
+      ? new Date(outfit.used_at).toDateString() === new Date().toDateString()
+      : false
+  )
+  const [marking, setMarking] = useState(false)
+
   const sorted = [...outfit.items].sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9))
+
+  const handleWorn = async () => {
+    setMarking(true)
+    try {
+      await api.post(`/api/v1/outfits/${outfit.id}/worn`)
+      setWornToday(true)
+      onWorn && onWorn()
+    } finally {
+      setMarking(false)
+    }
+  }
 
   return (
     <div className="outfit-card">
@@ -228,19 +246,38 @@ function OutfitCard({ outfit, onEdit, onDelete }) {
         <div style={{ fontWeight: 700, fontSize: 15 }}>{outfit.name}</div>
         <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>
           {new Date(outfit.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+          {outfit.used_at && (
+            <span style={{ marginLeft: 8, color: '#16a34a' }}>
+              · Worn {new Date(outfit.used_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
         </div>
       </div>
 
       {/* tags */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         <span className="tag">{outfit.is_auto_generated ? '🤖 Auto' : '✋ Manual'}</span>
-        {outfit.score != null && <span className="tag">⭐ {outfit.score.toFixed(2)}</span>}
-        {outfit.weather_temp != null && <span className="tag">🌡 {outfit.weather_temp}°C</span>}
+        {outfit.score != null && <span className="tag">Score {outfit.score.toFixed(2)}</span>}
+        {outfit.weather_temp != null && <span className="tag">{outfit.weather_temp}°C</span>}
         <span className="tag">{outfit.items.length} items</span>
       </div>
 
       {/* actions */}
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          className="btn btn-sm"
+          style={{
+            flex: 1,
+            background: wornToday ? '#dcfce7' : '#f0fdf4',
+            border: `1px solid ${wornToday ? '#16a34a' : '#86efac'}`,
+            color: wornToday ? '#15803d' : '#16a34a',
+            fontWeight: 600,
+          }}
+          onClick={handleWorn}
+          disabled={marking || wornToday}
+        >
+          {wornToday ? 'Worn today' : marking ? '…' : 'Wore this'}
+        </button>
         <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => onEdit(outfit)}>
           Edit
         </button>
@@ -303,6 +340,7 @@ export default function Outfits() {
               outfit={o}
               onEdit={setModal}
               onDelete={deleteOutfit}
+              onWorn={load}
             />
           ))}
         </div>

@@ -1,10 +1,9 @@
 fastapi==0.104.1
 uvicorn==0.24.0
 python-multipart==0.0.6
-pillow==10.1.0
-numpy==1.26.2
-scikit-learn==1.3.2
-rembg==2.0.57
-torch==2.1.2
-torchvision==0.16.2
-transformers==4.38.2
+pillow
+numpy
+scikit-learn
+joblib
+tensorflow
+xgboost

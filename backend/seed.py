@@ -15,7 +15,7 @@ MATERIALS = [
     "silk", "linen", "synthetic", "fleece", "down", "knit",
 ]
 
-STYLES = ["casual", "sport", "business", "formal", "streetwear", "outdoor"]
+STYLES = ["casual", "smart casual", "business", "sport", "streetwear", "formal"]
 
 
 def seed():

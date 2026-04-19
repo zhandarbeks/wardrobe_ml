@@ -33,13 +33,14 @@ services:
       db:
         condition: service_healthy
 
-  # ml-service:
-  #   build: ./ml-service
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8001:8001"
-  #   volumes:
-  #     - uploads:/app/uploads
+  ml-service:
+    build: ./ml-service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - uploads:/app/uploads
+      - ./ml-service/models:/app/models:ro
 
   frontend:
     build: ./frontend

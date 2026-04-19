@@ -30,7 +30,7 @@ const MATERIALS = [
   'silk', 'linen', 'synthetic', 'fleece', 'down', 'knit',
 ]
 
-const STYLES_LIST = ['casual', 'sport', 'business', 'formal', 'streetwear', 'outdoor']
+const STYLES_LIST = ['casual', 'smart casual', 'business', 'sport', 'streetwear', 'formal']
 
 const COLOR_HEX = {
   black: '#1a1a1a', white: '#f0f0f0', gray: '#888', navy: '#0a1e50',

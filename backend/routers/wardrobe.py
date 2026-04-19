@@ -80,6 +80,32 @@ def _load_items(db: Session, user_id, category: str = None):
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
+@router.get("/stats")
+def wardrobe_stats(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Returns basic wardrobe analytics for the current user."""
+    items = _load_items(db, user.id)
+
+    by_category: dict = {}
+    by_color: dict    = {}
+    for i in items:
+        cat = i.category_ref.name if i.category_ref else "unknown"
+        col = i.colour_ref.name   if i.colour_ref   else "unknown"
+        by_category[cat] = by_category.get(cat, 0) + 1
+        by_color[col]    = by_color.get(col, 0) + 1
+
+    never_worn = sum(1 for i in items if i.last_worn_at is None)
+
+    return {
+        "total":         len(items),
+        "by_category":   by_category,
+        "by_color":      by_color,
+        "never_worn":    never_worn,
+    }
+
+
 @router.get("")
 def get_wardrobe(
     category: str = None,
@@ -107,7 +133,7 @@ async def analyze(
 
     ml: dict = {}
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             with open(filepath, "rb") as f:
                 resp = await client.post(
                     f"{ML_URL}/analyze",

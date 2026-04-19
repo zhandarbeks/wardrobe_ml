@@ -46,12 +46,17 @@ def users(db: Session = Depends(get_db), _: User = Depends(get_admin)):
 
 @router.patch("/users/{uid}")
 def update_user(
-    uid: int,
+    uid: str,
     data: dict,
     db: Session = Depends(get_db),
     _: User = Depends(get_admin),
 ):
-    u = db.query(User).filter(User.id == uid).first()
+    import uuid as _uuid
+    try:
+        user_uuid = _uuid.UUID(uid)
+    except ValueError:
+        raise HTTPException(400, "Invalid user id")
+    u = db.query(User).filter(User.id == user_uuid).first()
     if not u:
         raise HTTPException(404, "Not found")
     if "is_active" in data:
@@ -63,8 +68,13 @@ def update_user(
 
 
 @router.delete("/users/{uid}")
-def delete_user(uid: int, db: Session = Depends(get_db), _: User = Depends(get_admin)):
-    u = db.query(User).filter(User.id == uid).first()
+def delete_user(uid: str, db: Session = Depends(get_db), _: User = Depends(get_admin)):
+    import uuid as _uuid
+    try:
+        user_uuid = _uuid.UUID(uid)
+    except ValueError:
+        raise HTTPException(400, "Invalid user id")
+    u = db.query(User).filter(User.id == user_uuid).first()
     if not u:
         raise HTTPException(404, "Not found")
     db.delete(u)

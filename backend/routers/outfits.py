@@ -234,6 +234,35 @@ def update_outfit(
     return {"ok": True}
 
 
+@router.post("/{oid}/worn")
+def mark_worn(
+    oid: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mark an outfit as worn today — updates used_at on the outfit and last_worn_at on each item."""
+    from datetime import datetime
+    try:
+        outfit_uuid = _uuid.UUID(oid)
+    except ValueError:
+        raise HTTPException(400, "Invalid outfit id")
+
+    o = db.query(Outfit).filter(Outfit.id == outfit_uuid, Outfit.user_id == user.id).first()
+    if not o:
+        raise HTTPException(404, "Not found")
+
+    now = datetime.utcnow()
+    o.used_at = now
+
+    # Also update last_worn_at on every item in the outfit
+    for oi in o.outfit_items:
+        if oi.item:
+            oi.item.last_worn_at = now
+
+    db.commit()
+    return {"ok": True}
+
+
 @router.delete("/{oid}")
 def delete_outfit(
     oid: str,

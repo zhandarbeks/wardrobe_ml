@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 dist
 build
+# ML models — large binary files, download separately
+*.h5
+*.pkl
+ml-service/models/

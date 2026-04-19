@@ -33,7 +33,7 @@ const MATERIALS = [
   'silk', 'linen', 'synthetic', 'fleece', 'down', 'knit',
 ]
 
-const STYLES = ['casual', 'sport', 'business', 'formal', 'streetwear', 'outdoor']
+const STYLES = ['casual', 'smart casual', 'business', 'sport', 'streetwear', 'formal']
 
 export default function AddItem() {
   const [preview, setPreview]     = useState(null)

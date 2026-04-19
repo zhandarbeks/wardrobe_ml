@@ -10,6 +10,14 @@ const statVal   = { fontWeight: 700, fontSize: 16 }
 // category → display order / size weight
 const CAT_ORDER = { outer: 0, top: 1, mid: 2, bottom: 3, footwear: 4, accessory: 5 }
 
+const COLOR_HEX = {
+  black: '#1a1a1a', white: '#f0f0f0', gray: '#888', navy: '#0a1e50',
+  'royal blue': '#4169e1', 'sky blue': '#87ceeb', teal: '#008080',
+  green: '#228b22', olive: '#6b8e23', yellow: '#ffd700', orange: '#ff8c00',
+  red: '#c81e1e', burgundy: '#800020', pink: '#ff69b3', purple: '#800080',
+  beige: '#e8dcc8', brown: '#8b4513', camel: '#c19a6b',
+}
+
 // Collage grid: top-layer items side by side, bottom full-width, footwear+accessory small row
 function OutfitCollage({ items }) {
   const sorted = [...items].sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9))
@@ -90,6 +98,7 @@ function ItemImage({ item }) {
 export default function Dashboard() {
   const [weather,         setWeather]         = useState(null)
   const [outfits,         setOutfits]         = useState([])
+  const [stats,           setStats]           = useState(null)
   const [loading,         setLoading]         = useState(true)
   const [outfitIdx,       setOutfitIdx]       = useState(0)
   const [saving,          setSaving]          = useState(false)
@@ -105,10 +114,12 @@ export default function Dashboard() {
     setLoading(true)
     setSaved(false)
     try {
-      const [wRes, oRes] = await Promise.all([
+      const [wRes, oRes, sRes] = await Promise.all([
         api.get('/api/v1/weather/current'),
         api.get('/api/v1/outfits/recommend'),
+        api.get('/api/v1/wardrobe/stats').catch(() => ({ data: null })),
       ])
+      setStats(sRes.data)
       setWeather(wRes.data)
       setOutfits(oRes.data.outfits || [])
       setOutfitIdx(0)
@@ -189,7 +200,7 @@ export default function Dashboard() {
 
   return (
     <div className="page">
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }}>
+      <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 340px) 1fr', gap: 24, alignItems: 'start' }}>
 
         {/* ── LEFT COLUMN ─────────────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -341,6 +352,59 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ── Wardrobe Stats ──────────────────────────────────────────── */}
+      {stats && stats.total > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <h2 style={{ marginBottom: 16 }}>Wardrobe Stats</h2>
+          <div className="card" style={{ padding: 20 }}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+              <div style={statBox}>
+                <div style={statLabel}>TOTAL ITEMS</div>
+                <div style={statVal}>{stats.total}</div>
+              </div>
+              <div style={statBox}>
+                <div style={statLabel}>NEVER WORN</div>
+                <div style={{ ...statVal, color: stats.never_worn > 0 ? '#d97706' : '#16a34a' }}>
+                  {stats.never_worn}
+                </div>
+              </div>
+              {Object.entries(stats.by_category || {}).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
+                <div key={cat} style={statBox}>
+                  <div style={statLabel}>{cat.toUpperCase()}</div>
+                  <div style={statVal}>{count}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Color distribution bar */}
+            {Object.keys(stats.by_color || {}).length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: '#999', marginBottom: 10, textTransform: 'uppercase' }}>
+                  Color distribution
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {Object.entries(stats.by_color).sort((a, b) => b[1] - a[1]).map(([color, count]) => (
+                    <div key={color} style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      background: '#f5f5f5', borderRadius: 16,
+                      padding: '4px 10px', fontSize: 12,
+                    }}>
+                      <div style={{
+                        width: 10, height: 10, borderRadius: '50%',
+                        background: COLOR_HEX[color] || '#ccc',
+                        border: '1px solid rgba(0,0,0,.1)', flexShrink: 0,
+                      }} />
+                      <span style={{ textTransform: 'capitalize', color: '#555' }}>{color}</span>
+                      <span style={{ fontWeight: 700, color: '#1a1a1a' }}>{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
