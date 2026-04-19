@@ -8,6 +8,7 @@ ML Service — trained model pipeline:
 """
 import io
 import pickle
+import joblib
 import uuid
 import numpy as np
 from pathlib import Path
@@ -21,18 +22,82 @@ UPLOAD_DIR = Path("/app/uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 MODELS_DIR = Path("/app/models")
 
+
+@app.on_event("startup")
+def preload_models():
+    """Load all models into memory at startup so first request isn't slow."""
+    import threading
+    def _load():
+        try:
+            _get_model_d()
+            print("[startup] ModelD (U-Net) loaded")
+            _get_model_a()
+            print("[startup] ModelA (EfficientNetB0) loaded")
+            _get_model_b()
+            print("[startup] ModelB (Siamese MLP) loaded")
+            _get_scaler_b()
+            print("[startup] Scaler_B loaded")
+            _get_model_c()
+            print("[startup] ModelC (XGBoost) loaded")
+            _get_idx_to_class()
+            print("[startup] class_indices loaded")
+            print("[startup] All models ready.")
+        except Exception as e:
+            print(f"[startup] WARNING: model preload failed: {e}")
+    threading.Thread(target=_load, daemon=True).start()
+
 # ── Class → wardrobe category mapping ───────────────────────────────────────
 CLASS_TO_CATEGORY = {
-    "Tshirts":      ("top",       "t-shirt"),
-    "Shirts":       ("top",       "shirt"),
-    "Casual Shoes": ("footwear",  "sneakers"),
-    "Watches":      ("accessory", "watch"),
-    "Sports Shoes": ("footwear",  "sneakers"),
-    "Kurtas":       ("top",       "kurta"),
-    "Tops":         ("top",       "top"),
-    "Handbags":     ("accessory", "bag"),
-    "Heels":        ("footwear",  "heels"),
-    "Sunglasses":   ("accessory", "sunglasses"),
+    # Tops
+    "Tshirts":          ("top",       "t-shirt"),
+    "Shirts":           ("top",       "shirt"),
+    "Tops":             ("top",       "top"),
+    "Kurtas":           ("top",       "kurta"),
+    "Blouses":          ("top",       "top"),
+    "Tank Tops":        ("top",       "tank top"),
+    "Polo Tshirts":     ("top",       "polo"),
+    "Tunics":           ("top",       "top"),
+    # Mid layer
+    "Sweatshirts":      ("mid",       "sweatshirt"),
+    "Sweaters":         ("mid",       "sweater"),
+    "Jackets":          ("outer",     "jacket"),
+    "Blazers":          ("outer",     "blazer"),
+    "Rain Jackets":     ("outer",     "jacket"),
+    "Trench Coats":     ("outer",     "jacket"),
+    "Coats":            ("outer",     "jacket"),
+    "Waistcoats":       ("outer",     "blazer"),
+    "Windcheaters":     ("outer",     "jacket"),
+    # Bottoms
+    "Jeans":            ("bottom",    "jeans"),
+    "Trousers":         ("bottom",    "trousers"),
+    "Shorts":           ("bottom",    "shorts"),
+    "Skirts":           ("bottom",    "skirt"),
+    "Leggings":         ("bottom",    "leggings"),
+    "Track Pants":      ("bottom",    "track pants"),
+    "Capris":           ("bottom",    "trousers"),
+    "Joggers":          ("bottom",    "joggers"),
+    "Jeggings":         ("bottom",    "leggings"),
+    # Footwear
+    "Casual Shoes":     ("footwear",  "casual shoes"),
+    "Sports Shoes":     ("footwear",  "sports shoes"),
+    "Formal Shoes":     ("footwear",  "formal shoes"),
+    "Heels":            ("footwear",  "heels"),
+    "Flats":            ("footwear",  "flats"),
+    "Sandals":          ("footwear",  "sandals"),
+    "Flip Flops":       ("footwear",  "sandals"),
+    "Boots":            ("footwear",  "casual shoes"),
+    "Loafers":          ("footwear",  "formal shoes"),
+    # Accessories
+    "Watches":          ("accessory", "watch"),
+    "Sunglasses":       ("accessory", "sunglasses"),
+    "Handbags":         ("accessory", "bag"),
+    "Backpacks":        ("accessory", "backpack"),
+    "Belts":            ("accessory", "belt"),
+    "Hats":             ("accessory", "belt"),
+    "Caps":             ("accessory", "belt"),
+    "Scarves":          ("accessory", "belt"),
+    "Socks":            ("footwear",  "casual shoes"),
+    "Ties":             ("accessory", "belt"),
 }
 
 # ── Named colour vocabulary ──────────────────────────────────────────────────
@@ -149,8 +214,8 @@ def _get_model_d():
 def _get_scaler_b():
     global _scaler_b
     if _scaler_b is None:
-        with open(MODELS_DIR / "scaler_b.pkl", "rb") as f:
-            _scaler_b = pickle.load(f)
+        # Saved with joblib (pickle protocol 5 + numpy buffers) — must use joblib to load
+        _scaler_b = joblib.load(MODELS_DIR / "scaler_b.pkl")
     return _scaler_b
 
 
@@ -195,19 +260,117 @@ def _get_embedding(img: Image.Image) -> np.ndarray:
     return extractor.predict(_preprocess_efficientnet(img), verbose=0)[0].astype(np.float32)
 
 
-def _classify(img: Image.Image):
-    """→ (category, subcategory, confidence) using EfficientNetB0 + class mapping."""
+def _classify_by_shape(mask_rgba: Image.Image) -> tuple:
+    """
+    Shape/silhouette heuristic on the U-Net foreground mask.
+    Returns (category, subcategory, confidence).
+
+    Rules derived from bounding-box geometry of the foreground region:
+      - footwear  : very wide relative to height (aspect < 0.7) OR very short vertically
+      - accessory : small area (<8% of image) OR nearly square compact shape
+      - outer     : wide-shoulder profile at top (shoulder_ratio > 1.3)
+      - bottom    : tall narrow shape with two-leg symmetry (aspect > 1.6, symmetric)
+      - mid       : moderate width, no strong shoulder taper
+      - top       : default with visible shoulder width
+    """
+    arr = np.array(mask_rgba)
+    if arr.ndim == 4 or (arr.ndim == 3 and arr.shape[2] == 4):
+        alpha = arr[:, :, 3]
+    else:
+        alpha = arr
+
+    fg = (alpha > 128).astype(np.uint8)
+    rows = np.any(fg, axis=1)
+    cols = np.any(fg, axis=0)
+    if not rows.any():
+        return "top", "t-shirt", 0.3
+
+    r_min, r_max = np.where(rows)[0][[0, -1]]
+    c_min, c_max = np.where(cols)[0][[0, -1]]
+    h = int(r_max - r_min) + 1
+    w = int(c_max - c_min) + 1
+    total_px = fg.shape[0] * fg.shape[1]
+    fg_area_ratio = fg.sum() / total_px
+
+    aspect = h / max(w, 1)          # > 1 → tall, < 1 → wide/short
+
+    # Widths at top-25%, middle, bottom-25% of the bounding box
+    q1 = int(r_min + h * 0.20)
+    q2 = int(r_min + h * 0.50)
+    q3 = int(r_min + h * 0.80)
+    w_top    = int(fg[max(q1-5, 0):q1+5, :].any(axis=0).sum())
+    w_mid    = int(fg[max(q2-5, 0):q2+5, :].any(axis=0).sum())
+    w_bottom = int(fg[max(q3-5, 0):q3+5, :].any(axis=0).sum())
+
+    shoulder_ratio = w_top / max(w_mid, 1)
+    taper_ratio    = w_top / max(w_bottom, 1)
+
+    # ── Decision tree ────────────────────────────────────────────────────────
+    # Footwear: wide and short bounding box
+    if aspect < 0.65 or (aspect < 0.85 and w_bottom > w_top * 1.5):
+        return "footwear", "casual shoes", 0.72
+
+    # Accessory: very small foreground area
+    if fg_area_ratio < 0.07:
+        return "accessory", "watch", 0.65
+
+    # Bottom (trousers/jeans): tall shape + symmetric two-leg split at bottom
+    if aspect > 1.55:
+        bottom_half = fg[q2:, :]
+        col_sum = bottom_half.sum(axis=0)
+        left_mass  = col_sum[:fg.shape[1]//2].sum()
+        right_mass = col_sum[fg.shape[1]//2:].sum()
+        balance = min(left_mass, right_mass) / max(max(left_mass, right_mass), 1)
+        if balance > 0.25:
+            return "bottom", "jeans", 0.74
+        return "bottom", "trousers", 0.65
+
+    # Outer (jacket/coat): very pronounced shoulder flare
+    # Regular t-shirts have shoulder_ratio ~1.2-1.4; jackets/coats > 1.55
+    if shoulder_ratio > 1.55 and taper_ratio > 1.3 and aspect > 0.85:
+        return "outer", "jacket", 0.68
+
+    # Mid layer: boxy shape, no shoulder flare, moderate height
+    if 0.85 < aspect < 1.5 and shoulder_ratio < 1.15 and w_mid >= w_top * 0.85:
+        return "mid", "sweater", 0.60
+
+    # Top — shirt if there is a noticeable shoulder width; t-shirt otherwise
+    sub = "shirt" if shoulder_ratio > 1.3 else "t-shirt"
+    return "top", sub, 0.65
+
+
+def _classify(img: Image.Image, mask_rgba: Image.Image = None):
+    """
+    Hybrid classification:
+      1. EfficientNetB0 — trusted only for non-top accessories/footwear
+         (model is trained on 10 specific classes; it over-predicts Tshirts for clothes)
+      2. Shape heuristic  — used for all garment categories (top/mid/outer/bottom)
+    Returns (category, subcategory, confidence).
+    """
     model_a, _ = _get_model_a()
     idx_to_class = _get_idx_to_class()
+
+    # ── EfficientNetB0 prediction ────────────────────────────────────────────
     preds = model_a.predict(_preprocess_efficientnet(img), verbose=0)
-    # Handle both single-output and dual-output (classification + embedding) models
     class_probs = preds[0] if isinstance(preds, list) else preds
-    class_probs = class_probs[0]  # remove batch dim
-    best_idx = int(np.argmax(class_probs))
-    conf = float(class_probs[best_idx])
-    class_name = idx_to_class.get(best_idx, "Tops")
-    cat, sub = CLASS_TO_CATEGORY.get(class_name, ("top", "top"))
-    return cat, sub, conf
+    class_probs = class_probs[0]
+    best_idx  = int(np.argmax(class_probs))
+    cnn_conf  = float(class_probs[best_idx])
+    class_name = idx_to_class.get(best_idx, "Tshirts")
+    cnn_cat, cnn_sub = CLASS_TO_CATEGORY.get(class_name, ("top", "t-shirt"))
+
+    # Trust CNN only when it confidently predicts a non-clothing accessory/footwear
+    NON_GARMENT = {"footwear", "accessory"}
+    if cnn_cat in NON_GARMENT and cnn_conf >= 0.60:
+        return cnn_cat, cnn_sub, cnn_conf
+
+    # ── Shape heuristic for garment categories ───────────────────────────────
+    if mask_rgba is not None:
+        shape_cat, shape_sub, shape_conf = _classify_by_shape(mask_rgba)
+        return shape_cat, shape_sub, shape_conf
+
+    # Final fallback
+    return cnn_cat, cnn_sub, cnn_conf
 
 
 # ── API endpoints ─────────────────────────────────────────────────────────────
@@ -234,9 +397,9 @@ async def analyze(file: UploadFile = File(...)):
     fname = f"nobg_{uuid.uuid4()}.png"
     no_bg.save(UPLOAD_DIR / fname, "PNG")
 
-    # Stage 2: classification + embedding
+    # Stage 2: classification (pass mask so shape heuristic can run) + embedding
     try:
-        category, subcategory, confidence = _classify(original)
+        category, subcategory, confidence = _classify(original, mask_rgba=no_bg)
         embedding = _get_embedding(original).tolist()
     except Exception:
         category, subcategory, confidence = "top", "t-shirt", 0.0

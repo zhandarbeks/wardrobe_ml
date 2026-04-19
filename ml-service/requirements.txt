@@ -4,5 +4,6 @@ python-multipart==0.0.6
 pillow
 numpy
 scikit-learn
+joblib
 tensorflow
 xgboost

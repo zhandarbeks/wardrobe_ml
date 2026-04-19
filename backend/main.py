@@ -7,11 +7,15 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from database import engine, Base
-import models
+import models  # noqa: F401 — registers all ORM classes before create_all
 
 from routers import auth, wardrobe, outfits, weather, profile, admin
 
 Base.metadata.create_all(bind=engine)
+
+# Seed lookup tables (categories, colours, materials, styles) on first run
+from seed import seed as _seed
+_seed()
 
 app = FastAPI(title="WarDrobe AI", version="1.0-MVP")
 

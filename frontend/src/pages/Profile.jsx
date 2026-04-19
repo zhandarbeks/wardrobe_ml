@@ -15,24 +15,37 @@ const COLOR_HEX = {
   beige: '#f5f5dc', brown: '#8b4513', camel: '#c19a6b',
 }
 
+function Section({ title, children }) {
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
+        textTransform: 'uppercase', color: '#999', marginBottom: 12,
+      }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export default function Profile() {
   const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const initials = (user.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+
   const [prefs, setPrefs] = useState({
-    styles: '',
-    favorite_colors: '',
-    disliked_colors: '',
-    heat_sensitivity: 'normal',
-    allow_layering: true,
+    styles: '', favorite_colors: '', disliked_colors: '',
+    heat_sensitivity: 'normal', allow_layering: true,
   })
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [saved,  setSaved]  = useState(false)
 
   useEffect(() => {
     api.get('/api/v1/profile/preferences').then(r => setPrefs(r.data))
   }, [])
 
   const toggle = (field, val) => {
-    const arr = (prefs[field] || '').split(',').filter(Boolean)
+    const arr  = (prefs[field] || '').split(',').filter(Boolean)
     const next = arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]
     setPrefs(p => ({ ...p, [field]: next.join(',') }))
   }
@@ -50,107 +63,179 @@ export default function Profile() {
   }
 
   return (
-    <div className="page">
-      <h1>Profile & Preferences</h1>
+    <div className="page" style={{ maxWidth: 600, margin: '0 auto' }}>
 
-      <div className="card" style={{ maxWidth: 620 }}>
-        {/* User info */}
+      {/* Avatar + user block */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 16,
+        marginBottom: 32,
+      }}>
         <div style={{
-          background: '#f5f5f5', borderRadius: 8,
-          padding: '12px 16px', marginBottom: 24,
+          width: 56, height: 56, borderRadius: '50%',
+          background: '#1a1a1a', color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 20, fontWeight: 700, flexShrink: 0,
         }}>
-          <div style={{ fontWeight: 600 }}>{user.name}</div>
-          <div className="text-sm text-gray">{user.email}</div>
-          <span className="tag" style={{ marginTop: 4 }}>{user.role}</span>
+          {initials}
         </div>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{user.name}</div>
+          <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{user.email}</div>
+        </div>
+        <span className="tag" style={{ marginLeft: 'auto' }}>{user.role}</span>
+      </div>
+
+      <div className="card" style={{ padding: 28 }}>
 
         {/* Styles */}
-        <h3 className="mb-8">Preferred Styles</h3>
-        <div className="flex flex-wrap gap-8 mb-16">
-          {STYLES_LIST.map(s => (
-            <button
-              key={s}
-              onClick={() => toggle('styles', s)}
-              className={`btn btn-sm ${has('styles', s) ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ textTransform: 'capitalize' }}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+        <Section title="Preferred Styles">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {STYLES_LIST.map(s => (
+              <button
+                key={s}
+                onClick={() => toggle('styles', s)}
+                style={{
+                  padding: '8px 0', borderRadius: 20, fontSize: 13,
+                  fontWeight: 500, cursor: 'pointer', transition: 'all .15s',
+                  border: has('styles', s) ? '1.5px solid #1a1a1a' : '1.5px solid #e5e5e5',
+                  background: has('styles', s) ? '#1a1a1a' : '#fafafa',
+                  color:      has('styles', s) ? '#fff'    : '#555',
+                  textTransform: 'capitalize', textAlign: 'center',
+                }}
+              >{s}</button>
+            ))}
+          </div>
+        </Section>
+
+        <div style={{ height: 1, background: '#f0f0f0', margin: '4px 0 28px' }} />
 
         {/* Favourite colours */}
-        <h3 className="mb-8">Favourite Colours</h3>
-        <div className="flex flex-wrap gap-8 mb-16">
-          {COLORS.map(c => (
-            <div
-              key={c}
-              title={c}
-              onClick={() => toggle('favorite_colors', c)}
-              style={{
-                cursor: 'pointer',
-                width: 32, height: 32, borderRadius: '50%',
-                background: COLOR_HEX[c] || '#ccc',
-                border: `3px solid ${has('favorite_colors', c) ? '#1a1a1a' : '#ddd'}`,
-                transform: has('favorite_colors', c) ? 'scale(1.15)' : 'scale(1)',
-                transition: 'transform .1s',
-              }}
-            />
-          ))}
-        </div>
+        <Section title="Favourite Colours">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 10 }}>
+            {COLORS.map(c => (
+              <div key={c} title={c} onClick={() => toggle('favorite_colors', c)}
+                style={{ position: 'relative', cursor: 'pointer', aspectRatio: '1' }}>
+                <div style={{
+                  width: '100%', height: '100%', borderRadius: '50%',
+                  background: COLOR_HEX[c] || '#ccc',
+                  border: `3px solid ${has('favorite_colors', c) ? '#1a1a1a' : '#e5e5e5'}`,
+                  boxSizing: 'border-box',
+                  transition: 'border-color .1s',
+                }} />
+                {has('favorite_colors', c) && (
+                  <div style={{
+                    position: 'absolute', inset: 0, display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    fontSize: 13, fontWeight: 700,
+                    color: ['white','beige','yellow','sky blue'].includes(c) ? '#333' : '#fff',
+                  }}>✓</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <div style={{ height: 1, background: '#f0f0f0', margin: '4px 0 28px' }} />
 
         {/* Disliked colours */}
-        <h3 className="mb-8">Disliked Colours</h3>
-        <div className="flex flex-wrap gap-8 mb-16">
-          {COLORS.map(c => (
-            <div
-              key={c}
-              title={c}
-              onClick={() => toggle('disliked_colors', c)}
-              style={{
-                cursor: 'pointer',
-                width: 32, height: 32, borderRadius: '50%',
-                background: COLOR_HEX[c] || '#ccc',
-                border: `3px solid ${has('disliked_colors', c) ? '#dc2626' : '#ddd'}`,
-                opacity: has('disliked_colors', c) ? 1 : 0.55,
-                transition: 'opacity .1s',
-              }}
-            />
-          ))}
-        </div>
+        <Section title="Disliked Colours">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 10 }}>
+            {COLORS.map(c => (
+              <div key={c} title={c} onClick={() => toggle('disliked_colors', c)}
+                style={{ position: 'relative', cursor: 'pointer', aspectRatio: '1' }}>
+                <div style={{
+                  width: '100%', height: '100%', borderRadius: '50%',
+                  background: COLOR_HEX[c] || '#ccc',
+                  border: `3px solid ${has('disliked_colors', c) ? '#dc2626' : '#e5e5e5'}`,
+                  boxSizing: 'border-box',
+                  opacity: has('disliked_colors', c) ? 1 : 0.45,
+                  transition: 'border-color .1s, opacity .1s',
+                }} />
+                {has('disliked_colors', c) && (
+                  <div style={{
+                    position: 'absolute', inset: 0, display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    fontSize: 13, fontWeight: 700,
+                    color: ['white','beige','yellow','sky blue'].includes(c) ? '#333' : '#fff',
+                  }}>✕</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <div style={{ height: 1, background: '#f0f0f0', margin: '4px 0 28px' }} />
 
         {/* Thermal sensitivity */}
-        <h3 className="mb-8">Thermal Sensitivity</h3>
-        <div className="flex gap-8 mb-16">
-          {[['cold', '🥶 Cold'], ['normal', '😊 Normal'], ['hot', '🥵 Warm']].map(([v, l]) => (
-            <button
-              key={v}
-              onClick={() => setPrefs(p => ({ ...p, heat_sensitivity: v }))}
-              className={`btn btn-sm ${prefs.heat_sensitivity === v ? 'btn-primary' : 'btn-secondary'}`}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
+        <Section title="Thermal Sensitivity">
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[
+              { v: 'cold',   label: 'Cold',   emoji: '🥶', desc: 'I feel cold easily' },
+              { v: 'normal', label: 'Normal',  emoji: '😊', desc: 'Average sensitivity' },
+              { v: 'hot',    label: 'Warm',    emoji: '🥵', desc: 'I run hot' },
+            ].map(({ v, label, emoji, desc }) => {
+              const active = prefs.heat_sensitivity === v
+              return (
+                <div
+                  key={v}
+                  onClick={() => setPrefs(p => ({ ...p, heat_sensitivity: v }))}
+                  style={{
+                    flex: 1, padding: '12px 8px', borderRadius: 10, cursor: 'pointer',
+                    textAlign: 'center', transition: 'all .15s',
+                    border: `2px solid ${active ? '#1a1a1a' : '#e5e5e5'}`,
+                    background: active ? '#1a1a1a' : '#fafafa',
+                    color: active ? '#fff' : '#555',
+                  }}
+                >
+                  <div style={{ fontSize: 22, marginBottom: 4 }}>{emoji}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
+                  <div style={{ fontSize: 11, opacity: .7, marginTop: 2 }}>{desc}</div>
+                </div>
+              )
+            })}
+          </div>
+        </Section>
+
+        <div style={{ height: 1, background: '#f0f0f0', margin: '4px 0 28px' }} />
 
         {/* Layering */}
-        <h3 className="mb-8">Layered Outfits</h3>
-        <div className="flex gap-8 mb-16">
-          {[[true, '✅ Allow layering'], [false, '👕 Single layer']].map(([v, l]) => (
-            <button
-              key={String(v)}
-              onClick={() => setPrefs(p => ({ ...p, allow_layering: v }))}
-              className={`btn btn-sm ${prefs.allow_layering === v ? 'btn-primary' : 'btn-secondary'}`}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
+        <Section title="Outfit Layering">
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[
+              { v: true,  label: 'Allow layering',  emoji: '🧥', desc: 'Mid + outer layers' },
+              { v: false, label: 'Single layer',     emoji: '👕', desc: 'One piece per slot' },
+            ].map(({ v, label, emoji, desc }) => {
+              const active = prefs.allow_layering === v
+              return (
+                <div
+                  key={String(v)}
+                  onClick={() => setPrefs(p => ({ ...p, allow_layering: v }))}
+                  style={{
+                    flex: 1, padding: '12px 8px', borderRadius: 10, cursor: 'pointer',
+                    textAlign: 'center', transition: 'all .15s',
+                    border: `2px solid ${active ? '#1a1a1a' : '#e5e5e5'}`,
+                    background: active ? '#1a1a1a' : '#fafafa',
+                    color: active ? '#fff' : '#555',
+                  }}
+                >
+                  <div style={{ fontSize: 22, marginBottom: 4 }}>{emoji}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
+                  <div style={{ fontSize: 11, opacity: .7, marginTop: 2 }}>{desc}</div>
+                </div>
+              )
+            })}
+          </div>
+        </Section>
 
-        {saved && <div className="alert alert-success">Preferences saved!</div>}
+        {saved && (
+          <div className="alert alert-success" style={{ marginBottom: 16 }}>
+            Preferences saved!
+          </div>
+        )}
 
         <button
           className="btn btn-primary w-full"
+          style={{ height: 44, fontSize: 15 }}
           onClick={save}
           disabled={saving}
         >

@@ -3,33 +3,51 @@ import { useNavigate } from 'react-router-dom'
 import api from '../api'
 
 const CATEGORIES = ['top', 'mid', 'outer', 'bottom', 'footwear', 'accessory']
+const CATEGORY_LABEL = {
+  top:       'Top (t-shirt, shirt, blouse)',
+  mid:       'Mid layer (sweater, hoodie)',
+  outer:     'Outer (jacket, coat)',
+  bottom:    'Bottom (trousers, skirt, shorts)',
+  footwear:  'Footwear',
+  accessory: 'Accessory',
+}
+
+// subcategory options — mirrors LAYER_MAP from ML notebook exactly
+const SUBCATEGORY_OPTIONS = {
+  top:       ['t-shirt', 'shirt', 'top', 'polo', 'tank top'],
+  mid:       ['sweater', 'sweatshirt'],
+  outer:     ['jacket', 'blazer'],
+  bottom:    ['jeans', 'trousers', 'shorts', 'skirt', 'leggings', 'track pants', 'joggers'],
+  footwear:  ['casual shoes', 'sports shoes', 'formal shoes', 'heels', 'flats', 'sandals'],
+  accessory: ['watch', 'sunglasses', 'belt', 'backpack'],
+}
+
 const COLORS = [
   'black', 'white', 'gray', 'navy', 'royal blue', 'sky blue',
   'teal', 'green', 'olive', 'yellow', 'orange', 'red',
   'burgundy', 'pink', 'purple', 'beige', 'brown', 'camel',
 ]
-const CATEGORY_LABEL = {
-  top: 'Top (t-shirt, shirt, blouse)',
-  mid: 'Mid layer (sweater, hoodie)',
-  outer: 'Outer (jacket, coat)',
-  bottom: 'Bottom (trousers, skirt, shorts)',
-  footwear: 'Footwear',
-  accessory: 'Accessory',
-}
+
+const MATERIALS = [
+  'cotton', 'wool', 'polyester', 'denim', 'leather',
+  'silk', 'linen', 'synthetic', 'fleece', 'down', 'knit',
+]
+
+const STYLES = ['casual', 'smart casual', 'business', 'sport', 'streetwear', 'formal']
 
 export default function AddItem() {
-  const [preview, setPreview] = useState(null)
+  const [preview, setPreview]     = useState(null)
   const [analyzing, setAnalyzing] = useState(false)
-  const [mlResult, setMlResult] = useState(null)
-  const [mlEmbedding, setMlEmbedding] = useState(null)
+  const [mlResult, setMlResult]   = useState(null)
   const [form, setForm] = useState({
     name: '', category: 'top', subcategory: '',
     color: 'black', brand: '', material: '', styles: '',
     temp_min: -5, temp_max: 25,
     image_url: null, image_no_bg_url: null,
+    ml_confidence: null, embedding: null,
   })
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError]   = useState('')
   const navigate = useNavigate()
 
   const onFileChange = async e => {
@@ -45,14 +63,15 @@ export default function AddItem() {
     try {
       const { data } = await api.post('/api/v1/wardrobe/analyze', fd)
       setMlResult(data)
-      setMlEmbedding(data.embedding || null)
       setForm(prev => ({
         ...prev,
-        category: data.category || prev.category,
-        subcategory: data.subcategory || '',
-        color: data.color || prev.color,
-        image_url: data.image_url,
+        category:        data.category        || prev.category,
+        subcategory:     data.subcategory      || '',
+        color:           data.color            || prev.color,
+        image_url:       data.image_url,
         image_no_bg_url: data.image_no_bg_url,
+        ml_confidence:   data.confidence       ?? null,
+        embedding:       data.embedding        ?? null,
       }))
     } catch {
       setError('ML analysis failed — you can still fill in the details manually.')
@@ -61,6 +80,16 @@ export default function AddItem() {
     }
   }
 
+  const toggleStyle = name => {
+    const current = form.styles ? form.styles.split(',').map(s => s.trim()).filter(Boolean) : []
+    const updated = current.includes(name)
+      ? current.filter(s => s !== name)
+      : [...current, name]
+    setForm(f => ({ ...f, styles: updated.join(',') }))
+  }
+
+  const activeStyles = form.styles ? form.styles.split(',').map(s => s.trim()).filter(Boolean) : []
+
   const save = async e => {
     e.preventDefault()
     if (!form.name.trim()) { setError('Name is required'); return }
@@ -68,11 +97,19 @@ export default function AddItem() {
     setError('')
     try {
       await api.post('/api/v1/wardrobe/items', {
-        ...form,
-        temp_min: Number(form.temp_min),
-        temp_max: Number(form.temp_max),
-        ml_confidence: mlResult?.confidence ?? null,
-        embedding: mlEmbedding,
+        name:            form.name.trim(),
+        category:        form.category,
+        subcategory:     form.subcategory || null,
+        color:           form.color,
+        material:        form.material   || null,
+        brand:           form.brand      || null,
+        styles:          form.styles     || null,
+        temp_min:        Number(form.temp_min),
+        temp_max:        Number(form.temp_max),
+        image_url:       form.image_url,
+        image_no_bg_url: form.image_no_bg_url,
+        ml_confidence:   form.ml_confidence,
+        embedding:       form.embedding,
       })
       navigate('/wardrobe')
     } catch (err) {
@@ -122,7 +159,7 @@ export default function AddItem() {
             className="btn btn-secondary"
             style={{ display: 'block', textAlign: 'center', width: '100%', cursor: 'pointer' }}
           >
-            📁 Choose Photo
+            Choose Photo
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -133,7 +170,7 @@ export default function AddItem() {
 
           {analyzing && (
             <div className="alert alert-info mt-8">
-              🤖 Analysing with AI… (U-Net segmentation + EfficientNetB0 classification + K-Means colour)
+              Analysing with AI — background removal + EfficientNetB0 classification
             </div>
           )}
 
@@ -154,6 +191,8 @@ export default function AddItem() {
           {error && <div className="alert alert-error">{error}</div>}
 
           <form onSubmit={save}>
+
+            {/* Name — required */}
             <div className="form-group">
               <label>Name *</label>
               <input
@@ -164,13 +203,17 @@ export default function AddItem() {
               />
             </div>
 
+            {/* Category + Subcategory */}
             <div className="grid grid-2" style={{ gap: 12 }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label>
                   Category *{' '}
                   {lowConf && <span style={{ color: '#dc2626', fontSize: 11 }}>⚠ verify</span>}
                 </label>
-                <select value={form.category} onChange={e => set('category', e.target.value)}>
+                <select
+                  value={form.category}
+                  onChange={e => { set('category', e.target.value); set('subcategory', '') }}
+                >
                   {CATEGORIES.map(c => (
                     <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
                   ))}
@@ -178,14 +221,19 @@ export default function AddItem() {
               </div>
               <div className="form-group" style={{ margin: 0 }}>
                 <label>Subcategory</label>
-                <input
+                <select
                   value={form.subcategory}
                   onChange={e => set('subcategory', e.target.value)}
-                  placeholder="e.g. t-shirt, jeans"
-                />
+                >
+                  <option value="">— select —</option>
+                  {(SUBCATEGORY_OPTIONS[form.category] || []).map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
+            {/* Colour — required */}
             <div className="form-group mt-16">
               <label>
                 Colour *{' '}
@@ -196,34 +244,48 @@ export default function AddItem() {
               </select>
             </div>
 
-            <div className="grid grid-2" style={{ gap: 12 }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Brand</label>
-                <input
-                  value={form.brand}
-                  onChange={e => set('brand', e.target.value)}
-                  placeholder="optional"
-                />
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Material</label>
-                <input
-                  value={form.material}
-                  onChange={e => set('material', e.target.value)}
-                  placeholder="cotton, wool…"
-                />
-              </div>
+            {/* Material — select from seeded values */}
+            <div className="form-group">
+              <label>Material</label>
+              <select value={form.material} onChange={e => set('material', e.target.value)}>
+                <option value="">— not specified —</option>
+                {MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
 
-            <div className="form-group mt-16">
-              <label>Style (comma-separated)</label>
+            {/* Brand */}
+            <div className="form-group">
+              <label>Brand</label>
               <input
-                value={form.styles}
-                onChange={e => set('styles', e.target.value)}
-                placeholder="casual, sport, business"
+                value={form.brand}
+                onChange={e => set('brand', e.target.value)}
+                placeholder="optional"
               />
             </div>
 
+            {/* Styles — checkboxes from seeded values */}
+            <div className="form-group">
+              <label>Style</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                {STYLES.map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => toggleStyle(s)}
+                    style={{
+                      padding: '4px 12px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
+                      border: '1px solid #ccc',
+                      background: activeStyles.includes(s) ? '#2563eb' : '#f3f4f6',
+                      color: activeStyles.includes(s) ? '#fff' : '#374151',
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Temperature range */}
             <div className="grid grid-2" style={{ gap: 12 }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label>Temp min (°C)</label>
