@@ -1,11 +1,3 @@
-"""
-ML Service — trained model pipeline:
-  1. Background removal     — ModelD U-Net      (modelD_unet_segmentation.h5)
-  2. Classification+Embedding — ModelA EfficientNetB0 (modelA_efficientnetb0.h5)
-  3. Dominant colour        — K-Means (RGB)
-  4. Pairwise compatibility — ModelB Siamese MLP (modelB_compatibility.h5)
-  5. Context-aware ranking  — ModelC XGBoost     (modelC_xgboost.pkl)
-"""
 import io
 import pickle
 import joblib
