@@ -100,6 +100,7 @@ export default function Dashboard() {
   const [outfits,         setOutfits]         = useState([])
   const [stats,           setStats]           = useState(null)
   const [loading,         setLoading]         = useState(true)
+  const [regenerating,    setRegenerating]    = useState(false)
   const [outfitIdx,       setOutfitIdx]       = useState(0)
   const [saving,          setSaving]          = useState(false)
   const [saved,           setSaved]           = useState(false)
@@ -131,6 +132,21 @@ export default function Dashboard() {
   }
 
   useEffect(() => { load() }, [])
+
+  const regenerate = async () => {
+    setRegenerating(true)
+    setSaved(false)
+    try {
+      const res = await api.get('/api/v1/outfits/recommend')
+      setOutfits(res.data.outfits || [])
+      setOutfitIdx(0)
+      if (res.data.weather) setWeather(res.data.weather)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   const setUserCity = async () => {
     if (!city.trim()) return
@@ -334,10 +350,10 @@ export default function Dashboard() {
                 <button
                   className="btn btn-secondary"
                   style={{ flex: 1 }}
-                  onClick={() => { setOutfitIdx(i => (i + 1) % outfits.length); setSaved(false) }}
-                  disabled={outfits.length <= 1}
+                  onClick={regenerate}
+                  disabled={regenerating}
                 >
-                  🔄 Regenerate
+                  {regenerating ? '⏳ Generating…' : '🔄 Regenerate'}
                 </button>
                 <button
                   className="btn btn-primary"
