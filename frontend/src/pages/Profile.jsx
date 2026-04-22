@@ -15,6 +15,11 @@ const COLOR_HEX = {
   beige: '#f5f5dc', brown: '#8b4513', camel: '#c19a6b',
 }
 
+const INPUT_STYLE = {
+  width: '100%', padding: '10px 12px', border: '1px solid #ddd',
+  borderRadius: 8, fontSize: 14, outline: 'none', fontFamily: 'inherit',
+}
+
 function Section({ title, children }) {
   return (
     <div style={{ marginBottom: 28 }}>
@@ -30,8 +35,16 @@ function Section({ title, children }) {
 }
 
 export default function Profile() {
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'))
   const initials = (user.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+
+  const [account, setAccount] = useState({ name: user.name || '', email: user.email || '' })
+  const [accountSaving, setAccountSaving] = useState(false)
+  const [accountMsg,    setAccountMsg]    = useState(null)  // {type, text}
+
+  const [pwd, setPwd] = useState({ current_password: '', new_password: '', confirm_password: '' })
+  const [pwdSaving, setPwdSaving] = useState(false)
+  const [pwdMsg,    setPwdMsg]    = useState(null)
 
   const [prefs, setPrefs] = useState({
     styles: '', favorite_colors: '', disliked_colors: '',
@@ -43,6 +56,41 @@ export default function Profile() {
   useEffect(() => {
     api.get('/api/v1/profile/preferences').then(r => setPrefs(r.data))
   }, [])
+
+  const saveAccount = async () => {
+    setAccountSaving(true)
+    setAccountMsg(null)
+    try {
+      const res = await api.patch('/api/v1/auth/me', {
+        name:  account.name.trim(),
+        email: account.email.trim(),
+      })
+      const updated = { ...user, name: res.data.name, email: res.data.email }
+      localStorage.setItem('user', JSON.stringify(updated))
+      setUser(updated)
+      setAccountMsg({ type: 'success', text: 'Account updated!' })
+      setTimeout(() => setAccountMsg(null), 2500)
+    } catch (e) {
+      setAccountMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to update' })
+    } finally {
+      setAccountSaving(false)
+    }
+  }
+
+  const changePassword = async () => {
+    setPwdSaving(true)
+    setPwdMsg(null)
+    try {
+      await api.patch('/api/v1/auth/password', pwd)
+      setPwd({ current_password: '', new_password: '', confirm_password: '' })
+      setPwdMsg({ type: 'success', text: 'Password changed!' })
+      setTimeout(() => setPwdMsg(null), 2500)
+    } catch (e) {
+      setPwdMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to change password' })
+    } finally {
+      setPwdSaving(false)
+    }
+  }
 
   const toggle = (field, val) => {
     const arr  = (prefs[field] || '').split(',').filter(Boolean)
@@ -83,6 +131,91 @@ export default function Profile() {
           <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{user.email}</div>
         </div>
         <span className="tag" style={{ marginLeft: 'auto' }}>{user.role}</span>
+      </div>
+
+      {/* Account Settings */}
+      <div className="card" style={{ padding: 28, marginBottom: 20 }}>
+        <Section title="Account Settings">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>Name</label>
+              <input
+                value={account.name}
+                onChange={e => setAccount(a => ({ ...a, name: e.target.value }))}
+                style={INPUT_STYLE}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>Email</label>
+              <input
+                type="email"
+                value={account.email}
+                onChange={e => setAccount(a => ({ ...a, email: e.target.value }))}
+                style={INPUT_STYLE}
+              />
+            </div>
+            {accountMsg && (
+              <div className={`alert alert-${accountMsg.type === 'success' ? 'success' : 'error'}`}>
+                {accountMsg.text}
+              </div>
+            )}
+            <button
+              className="btn btn-primary"
+              style={{ height: 40, fontSize: 14 }}
+              onClick={saveAccount}
+              disabled={accountSaving || (!account.name.trim() || !account.email.trim())}
+            >
+              {accountSaving ? 'Saving…' : 'Save Account'}
+            </button>
+          </div>
+        </Section>
+      </div>
+
+      {/* Change Password */}
+      <div className="card" style={{ padding: 28, marginBottom: 20 }}>
+        <Section title="Change Password">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input
+              type="password"
+              placeholder="Current password"
+              value={pwd.current_password}
+              onChange={e => setPwd(p => ({ ...p, current_password: e.target.value }))}
+              style={INPUT_STYLE}
+            />
+            <input
+              type="password"
+              placeholder="New password (min. 6 chars)"
+              value={pwd.new_password}
+              onChange={e => setPwd(p => ({ ...p, new_password: e.target.value }))}
+              style={INPUT_STYLE}
+            />
+            <input
+              type="password"
+              placeholder="Confirm new password"
+              value={pwd.confirm_password}
+              onChange={e => setPwd(p => ({ ...p, confirm_password: e.target.value }))}
+              style={INPUT_STYLE}
+            />
+            {pwdMsg && (
+              <div className={`alert alert-${pwdMsg.type === 'success' ? 'success' : 'error'}`}>
+                {pwdMsg.text}
+              </div>
+            )}
+            <button
+              className="btn btn-primary"
+              style={{ height: 40, fontSize: 14 }}
+              onClick={changePassword}
+              disabled={
+                pwdSaving ||
+                !pwd.current_password ||
+                !pwd.new_password ||
+                !pwd.confirm_password
+              }
+            >
+              {pwdSaving ? 'Changing…' : 'Change Password'}
+            </button>
+          </div>
+        </Section>
       </div>
 
       <div className="card" style={{ padding: 28 }}>

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -58,3 +60,55 @@ def login(body: LoginBody, db: Session = Depends(get_db)):
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user)):
     return _user_dict(current_user)
+
+
+class UpdateMeBody(BaseModel):
+    name:  Optional[str]      = None
+    email: Optional[EmailStr] = None
+
+
+@router.patch("/me")
+def update_me(
+    body: UpdateMeBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if body.name is not None:
+        new_name = body.name.strip()
+        if not new_name:
+            raise HTTPException(400, "Name cannot be empty")
+        current_user.name = new_name
+
+    if body.email is not None and body.email != current_user.email:
+        existing = db.query(User).filter(User.email == body.email).first()
+        if existing and existing.id != current_user.id:
+            raise HTTPException(400, "Email already registered")
+        current_user.email = body.email
+
+    db.commit()
+    db.refresh(current_user)
+    return _user_dict(current_user)
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password:     str
+    confirm_password: str
+
+
+@router.patch("/password")
+def change_password(
+    body: ChangePasswordBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not verify_password(body.current_password, current_user.password_hash):
+        raise HTTPException(400, "Current password is incorrect")
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "New password must be at least 6 characters")
+    if body.new_password != body.confirm_password:
+        raise HTTPException(400, "Passwords do not match")
+
+    current_user.password_hash = hash_password(body.new_password)
+    db.commit()
+    return {"ok": True}
