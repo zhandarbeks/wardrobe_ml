@@ -19,6 +19,7 @@ export default function Nav() {
         <NavLink to="/wardrobe" className={cls}>Wardrobe</NavLink>
         <NavLink to="/add"      className={cls}>+ Add Item</NavLink>
         <NavLink to="/outfits"  className={cls}>Outfits</NavLink>
+        <NavLink to="/history"  className={cls}>History</NavLink>
         <NavLink to="/profile"  className={cls}>Profile</NavLink>
         {user.role === 'admin' && (
           <NavLink to="/admin" className={cls}>Admin</NavLink>
