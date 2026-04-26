@@ -1,6 +1,9 @@
+import uuid as _uuid
+import shutil
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from database import get_db
@@ -9,6 +12,9 @@ from auth import hash_password, verify_password, create_access_token
 from deps import get_current_user
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+UPLOAD_DIR = Path("/app/uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 def _user_dict(u):
@@ -20,6 +26,7 @@ def _user_dict(u):
         "city":       u.city,
         "latitude":   u.latitude,
         "longitude":  u.longitude,
+        "avatar_url": u.avatar_url,
         "created_at": str(u.created_at) if u.created_at else None,
     }
 
@@ -155,6 +162,51 @@ def delete_me(
         pass
 
     db.delete(current_user)  # cascade removes items, outfits, ml_logs, preferences
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/avatar")
+def upload_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ext = (file.filename or "image.jpg").rsplit(".", 1)[-1].lower()
+    if ext not in ("jpg", "jpeg", "png", "webp"):
+        raise HTTPException(400, "Unsupported image format")
+
+    filename = f"avatar_{current_user.id}_{_uuid.uuid4().hex[:8]}.{ext}"
+    filepath = UPLOAD_DIR / filename
+    with open(filepath, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # remove old avatar file (best-effort)
+    if current_user.avatar_url and current_user.avatar_url.startswith("/uploads/"):
+        old = UPLOAD_DIR / current_user.avatar_url.split("/", 2)[-1]
+        try:
+            old.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    current_user.avatar_url = f"/uploads/{filename}"
+    db.commit()
+    db.refresh(current_user)
+    return _user_dict(current_user)
+
+
+@router.delete("/avatar")
+def remove_avatar(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.avatar_url and current_user.avatar_url.startswith("/uploads/"):
+        old = UPLOAD_DIR / current_user.avatar_url.split("/", 2)[-1]
+        try:
+            old.unlink(missing_ok=True)
+        except Exception:
+            pass
+    current_user.avatar_url = None
     db.commit()
     return {"ok": True}
 

@@ -65,6 +65,9 @@ export default function Profile() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteMsg,  setDeleteMsg]  = useState(null)
 
+  const fileInputRef = useRef(null)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+
   useEffect(() => {
     api.get('/api/v1/profile/preferences').then(r => setPrefs(r.data))
     // pull fresh user (city/lat/lon may not be in localStorage from older logins)
@@ -79,7 +82,7 @@ export default function Profile() {
       const merged = {
         ...cached,
         name: u.name, email: u.email, role: u.role,
-        city: u.city, created_at: u.created_at,
+        city: u.city, avatar_url: u.avatar_url, created_at: u.created_at,
       }
       localStorage.setItem('user', JSON.stringify(merged))
       setUser(merged)
@@ -191,6 +194,41 @@ export default function Profile() {
     }
   }
 
+  const uploadAvatar = async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { alert('File too large (max 5MB)'); return }
+    setAvatarBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await api.post('/api/v1/auth/avatar', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const updated = { ...user, avatar_url: res.data.avatar_url }
+      localStorage.setItem('user', JSON.stringify(updated))
+      setUser(updated)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Upload failed')
+    } finally {
+      setAvatarBusy(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const removeAvatar = async () => {
+    if (!confirm('Remove your profile photo?')) return
+    setAvatarBusy(true)
+    try {
+      await api.delete('/api/v1/auth/avatar')
+      const updated = { ...user, avatar_url: null }
+      localStorage.setItem('user', JSON.stringify(updated))
+      setUser(updated)
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
   const deleteAccount = async () => {
     if (!deletePwd) { setDeleteMsg({ type: 'error', text: 'Password is required' }); return }
     if (!confirm('Permanently delete your account and ALL your data (items, outfits, history)? This cannot be undone.')) return
@@ -248,15 +286,39 @@ export default function Profile() {
         display: 'flex', alignItems: 'center', gap: 16,
         marginBottom: 32,
       }}>
-        <div style={{
-          width: 56, height: 56, borderRadius: '50%',
-          background: '#1a1a1a', color: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 20, fontWeight: 700, flexShrink: 0,
-        }}>
-          {initials}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={uploadAvatar}
+          style={{ display: 'none' }}
+        />
+        <div
+          onClick={() => !avatarBusy && fileInputRef.current?.click()}
+          title="Click to change photo"
+          style={{
+            width: 64, height: 64, borderRadius: '50%',
+            background: user.avatar_url ? '#eee' : '#1a1a1a',
+            color: '#fff', overflow: 'hidden', position: 'relative',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 22, fontWeight: 700, flexShrink: 0,
+            cursor: avatarBusy ? 'wait' : 'pointer',
+          }}
+        >
+          {user.avatar_url ? (
+            <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            initials
+          )}
+          {avatarBusy && (
+            <div style={{
+              position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11,
+            }}>…</div>
+          )}
         </div>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>{user.name}</div>
           <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{user.email}</div>
           {user.created_at && (
@@ -266,6 +328,22 @@ export default function Profile() {
               })}
             </div>
           )}
+          <div style={{ marginTop: 6, display: 'flex', gap: 10, fontSize: 11 }}>
+            <span
+              onClick={() => !avatarBusy && fileInputRef.current?.click()}
+              style={{ color: '#1a1a1a', cursor: 'pointer', fontWeight: 600 }}
+            >
+              {user.avatar_url ? 'Change photo' : 'Upload photo'}
+            </span>
+            {user.avatar_url && (
+              <span
+                onClick={removeAvatar}
+                style={{ color: '#dc2626', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Remove
+              </span>
+            )}
+          </div>
         </div>
         <span className="tag" style={{ marginLeft: 'auto' }}>{user.role}</span>
       </div>
