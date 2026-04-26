@@ -35,10 +35,14 @@ const STEPS = [
 ]
 
 function ColorGrid({ field, accent, symbol, isSelected, onToggle }) {
+  // 18 colours → exactly 2 rows of 9
+  const COLS = Math.ceil(COLORS.length / 2)
   return (
     <div style={{
-      display: 'flex', flexWrap: 'wrap',
-      justifyContent: 'center', gap: '12px 10px',
+      display: 'grid',
+      gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+      gap: '14px 6px',
+      justifyItems: 'center',
     }}>
       {COLORS.map(({ id, hex }) => {
         const on = isSelected(field, id)
@@ -67,7 +71,7 @@ function ColorGrid({ field, accent, symbol, isSelected, onToggle }) {
             </div>
             <span style={{
               fontSize: 9, color: '#aaa', textAlign: 'center',
-              textTransform: 'capitalize', lineHeight: 1.2, maxWidth: 40,
+              textTransform: 'capitalize', lineHeight: 1.2, maxWidth: 44,
             }}>{id}</span>
           </div>
         )
