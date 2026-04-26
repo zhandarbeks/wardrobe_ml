@@ -60,6 +60,11 @@ export default function Profile() {
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
 
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deletePwd,  setDeletePwd]  = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteMsg,  setDeleteMsg]  = useState(null)
+
   useEffect(() => {
     api.get('/api/v1/profile/preferences').then(r => setPrefs(r.data))
     // pull fresh user (city/lat/lon may not be in localStorage from older logins)
@@ -71,7 +76,11 @@ export default function Profile() {
         longitude: u.longitude != null ? String(u.longitude) : '',
       })
       const cached = JSON.parse(localStorage.getItem('user') || '{}')
-      const merged = { ...cached, name: u.name, email: u.email, role: u.role, city: u.city }
+      const merged = {
+        ...cached,
+        name: u.name, email: u.email, role: u.role,
+        city: u.city, created_at: u.created_at,
+      }
       localStorage.setItem('user', JSON.stringify(merged))
       setUser(merged)
     }).catch(() => {})
@@ -182,6 +191,22 @@ export default function Profile() {
     }
   }
 
+  const deleteAccount = async () => {
+    if (!deletePwd) { setDeleteMsg({ type: 'error', text: 'Password is required' }); return }
+    if (!confirm('Permanently delete your account and ALL your data (items, outfits, history)? This cannot be undone.')) return
+    setDeleteBusy(true)
+    setDeleteMsg(null)
+    try {
+      await api.delete('/api/v1/auth/me', { data: { password: deletePwd } })
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+    } catch (e) {
+      setDeleteMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to delete account' })
+      setDeleteBusy(false)
+    }
+  }
+
   const changePassword = async () => {
     setPwdSaving(true)
     setPwdMsg(null)
@@ -234,6 +259,13 @@ export default function Profile() {
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>{user.name}</div>
           <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{user.email}</div>
+          {user.created_at && (
+            <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>
+              Member since {new Date(user.created_at).toLocaleDateString('en-GB', {
+                day: 'numeric', month: 'long', year: 'numeric',
+              })}
+            </div>
+          )}
         </div>
         <span className="tag" style={{ marginLeft: 'auto' }}>{user.role}</span>
       </div>
@@ -546,6 +578,59 @@ export default function Profile() {
         >
           {saving ? 'Saving…' : 'Save Preferences'}
         </button>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="card" style={{ padding: 28, marginTop: 20, border: '1px solid #fecaca' }}>
+        <Section title="Danger Zone">
+          <div style={{ fontSize: 13, color: '#666', marginBottom: 12, lineHeight: 1.5 }}>
+            Permanently delete your account along with all clothes, outfits, history and preferences.
+            This cannot be undone.
+          </div>
+          {!deleteOpen ? (
+            <button
+              className="btn btn-danger"
+              style={{ height: 40, fontSize: 14 }}
+              onClick={() => { setDeleteOpen(true); setDeleteMsg(null) }}
+            >
+              Delete Account
+            </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input
+                type="password"
+                placeholder="Confirm with your password"
+                value={deletePwd}
+                onChange={e => setDeletePwd(e.target.value)}
+                style={INPUT_STYLE}
+                autoFocus
+              />
+              {deleteMsg && (
+                <div className={`alert alert-${deleteMsg.type === 'success' ? 'success' : 'error'}`}>
+                  {deleteMsg.text}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ flex: 1, height: 40, fontSize: 14 }}
+                  onClick={() => { setDeleteOpen(false); setDeletePwd(''); setDeleteMsg(null) }}
+                  disabled={deleteBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-danger"
+                  style={{ flex: 1, height: 40, fontSize: 14 }}
+                  onClick={deleteAccount}
+                  disabled={deleteBusy || !deletePwd}
+                >
+                  {deleteBusy ? 'Deleting…' : 'Permanently Delete'}
+                </button>
+              </div>
+            </div>
+          )}
+        </Section>
       </div>
     </div>
   )

@@ -13,13 +13,14 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 def _user_dict(u):
     return {
-        "id":        u.id,
-        "email":     u.email,
-        "name":      u.name,
-        "role":      u.role,
-        "city":      u.city,
-        "latitude":  u.latitude,
-        "longitude": u.longitude,
+        "id":         u.id,
+        "email":      u.email,
+        "name":       u.name,
+        "role":       u.role,
+        "city":       u.city,
+        "latitude":   u.latitude,
+        "longitude":  u.longitude,
+        "created_at": str(u.created_at) if u.created_at else None,
     }
 
 
@@ -126,6 +127,36 @@ def update_me(
         pass
 
     return _user_dict(current_user)
+
+
+class DeleteMeBody(BaseModel):
+    password: str
+
+
+@router.delete("/me")
+def delete_me(
+    body: DeleteMeBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not verify_password(body.password, current_user.password_hash):
+        raise HTTPException(400, "Password is incorrect")
+
+    # invalidate weather caches before delete (uid won't exist after)
+    try:
+        from routers.outfits import _wcache
+        _wcache.pop(current_user.id, None)
+    except Exception:
+        pass
+    try:
+        from routers.weather import _cache as _weather_cache
+        _weather_cache.pop(current_user.id, None)
+    except Exception:
+        pass
+
+    db.delete(current_user)  # cascade removes items, outfits, ml_logs, preferences
+    db.commit()
+    return {"ok": True}
 
 
 class ChangePasswordBody(BaseModel):
