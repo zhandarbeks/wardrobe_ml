@@ -1,16 +1,18 @@
 import uuid as _uuid
 import os
 import shutil
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, distinct
 from pydantic import BaseModel
 from typing import Optional
 from pathlib import Path
 import httpx
 
 from database import get_db
-from models import User, WardrobeItem, MLLog, Category, Colour, Material, Style
+from models import User, WardrobeItem, MLLog, Category, Colour, Material, Style, Outfit, OutfitItem
 from deps import get_current_user
 
 router = APIRouter(prefix="/api/v1/wardrobe", tags=["wardrobe"])
@@ -85,24 +87,89 @@ def wardrobe_stats(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Returns basic wardrobe analytics for the current user."""
+    """Detailed wardrobe analytics for the dashboard / stats page."""
     items = _load_items(db, user.id)
 
     by_category: dict = {}
-    by_color: dict    = {}
+    by_color:    dict = {}
+    by_season:   dict = {}
     for i in items:
         cat = i.category_ref.name if i.category_ref else "unknown"
         col = i.colour_ref.name   if i.colour_ref   else "unknown"
+        sea = i.season or "all"
         by_category[cat] = by_category.get(cat, 0) + 1
         by_color[col]    = by_color.get(col, 0) + 1
+        by_season[sea]   = by_season.get(sea, 0) + 1
 
-    never_worn = sum(1 for i in items if i.last_worn_at is None)
+    # wear counts: distinct WORN outfits each item appears in
+    rows = (
+        db.query(OutfitItem.item_id, func.count(distinct(Outfit.id)))
+        .join(Outfit, OutfitItem.outfit_id == Outfit.id)
+        .filter(Outfit.user_id == user.id, Outfit.used_at.isnot(None))
+        .group_by(OutfitItem.item_id)
+        .all()
+    )
+    wear_counts = {iid: cnt for iid, cnt in rows}
+    total_outfit_wears = (
+        db.query(func.count(Outfit.id))
+        .filter(Outfit.user_id == user.id, Outfit.used_at.isnot(None))
+        .scalar() or 0
+    )
+
+    def thumb(i):
+        return {
+            "id":              str(i.id),
+            "name":            i.name,
+            "image_url":       i.image_url,
+            "image_no_bg_url": i.image_no_bg_url,
+            "category":        i.category_ref.name if i.category_ref else "",
+            "color":           i.colour_ref.name   if i.colour_ref   else "",
+        }
+
+    # most worn — top 5 with wear_count > 0
+    ranked = sorted(items, key=lambda i: wear_counts.get(i.id, 0), reverse=True)
+    most_worn = [
+        {**thumb(i), "wear_count": wear_counts.get(i.id, 0),
+         "last_worn_at": str(i.last_worn_at) if i.last_worn_at else None}
+        for i in ranked if wear_counts.get(i.id, 0) > 0
+    ][:5]
+
+    # longest unworn — never_worn first (by oldest created_at), then oldest last_worn_at
+    now = datetime.now(timezone.utc)
+    def days_since(dt):
+        if dt is None: return None
+        if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+        return (now - dt).days
+
+    forgotten = sorted(
+        items,
+        key=lambda i: (
+            i.last_worn_at or i.created_at or datetime.min.replace(tzinfo=timezone.utc)
+        ),
+    )
+    longest_unworn = []
+    for i in forgotten[:5]:
+        ref = i.last_worn_at or i.created_at
+        longest_unworn.append({
+            **thumb(i),
+            "last_worn_at": str(i.last_worn_at) if i.last_worn_at else None,
+            "days_since":   days_since(ref),
+            "never_worn":   i.last_worn_at is None,
+        })
+
+    items_ever_worn = sum(1 for i in items if wear_counts.get(i.id, 0) > 0)
+    never_worn      = len(items) - items_ever_worn
 
     return {
-        "total":         len(items),
-        "by_category":   by_category,
-        "by_color":      by_color,
-        "never_worn":    never_worn,
+        "total":              len(items),
+        "items_ever_worn":    items_ever_worn,
+        "never_worn":         never_worn,
+        "total_outfit_wears": total_outfit_wears,
+        "by_category":        by_category,
+        "by_color":           by_color,
+        "by_season":          by_season,
+        "most_worn":          most_worn,
+        "longest_unworn":     longest_unworn,
     }
 
 

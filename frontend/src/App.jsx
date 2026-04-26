@@ -8,6 +8,7 @@ import Wardrobe from './pages/Wardrobe'
 import AddItem from './pages/AddItem'
 import Outfits from './pages/Outfits'
 import History from './pages/History'
+import Stats from './pages/Stats'
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'
 
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/add"        element={<PrivateRoute><AddItem /></PrivateRoute>} />
         <Route path="/outfits"    element={<PrivateRoute><Outfits /></PrivateRoute>} />
         <Route path="/history"    element={<PrivateRoute><History /></PrivateRoute>} />
+        <Route path="/stats"      element={<PrivateRoute><Stats /></PrivateRoute>} />
         <Route path="/profile"    element={<PrivateRoute><Profile /></PrivateRoute>} />
         <Route path="/admin"      element={<AdminRoute><Admin /></AdminRoute>} />
         <Route path="*"           element={<Navigate to="/" replace />} />
