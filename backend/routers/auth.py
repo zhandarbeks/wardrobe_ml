@@ -12,7 +12,15 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 def _user_dict(u):
-    return {"id": u.id, "email": u.email, "name": u.name, "role": u.role, "city": u.city}
+    return {
+        "id":        u.id,
+        "email":     u.email,
+        "name":      u.name,
+        "role":      u.role,
+        "city":      u.city,
+        "latitude":  u.latitude,
+        "longitude": u.longitude,
+    }
 
 
 class RegisterBody(BaseModel):
@@ -63,8 +71,11 @@ def me(current_user: User = Depends(get_current_user)):
 
 
 class UpdateMeBody(BaseModel):
-    name:  Optional[str]      = None
-    email: Optional[EmailStr] = None
+    name:      Optional[str]      = None
+    email:     Optional[EmailStr] = None
+    city:      Optional[str]      = None
+    latitude:  Optional[float]    = None
+    longitude: Optional[float]    = None
 
 
 @router.patch("/me")
@@ -85,8 +96,35 @@ def update_me(
             raise HTTPException(400, "Email already registered")
         current_user.email = body.email
 
+    if body.city is not None:
+        current_user.city = body.city.strip() or None
+
+    if body.latitude is not None:
+        if not -90 <= body.latitude <= 90:
+            raise HTTPException(400, "Latitude must be between -90 and 90")
+        current_user.latitude = body.latitude
+
+    if body.longitude is not None:
+        if not -180 <= body.longitude <= 180:
+            raise HTTPException(400, "Longitude must be between -180 and 180")
+        current_user.longitude = body.longitude
+
     db.commit()
     db.refresh(current_user)
+
+    # invalidate cached weather for this user across both caches
+    # (Dashboard widget reads weather._cache; outfit recommend uses outfits._wcache)
+    try:
+        from routers.outfits import _wcache
+        _wcache.pop(current_user.id, None)
+    except Exception:
+        pass
+    try:
+        from routers.weather import _cache as _weather_cache
+        _weather_cache.pop(current_user.id, None)
+    except Exception:
+        pass
+
     return _user_dict(current_user)
 
 

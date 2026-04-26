@@ -162,8 +162,19 @@ export default function Dashboard() {
     setGeoLoading(true)
     navigator.geolocation.getCurrentPosition(
       async pos => {
+        const lat = pos.coords.latitude
+        const lon = pos.coords.longitude
+        let cityName = null
         try {
-          await api.post('/api/v1/weather/location', { lat: pos.coords.latitude, lon: pos.coords.longitude })
+          const r = await api.get(`/api/v1/weather/reverse?lat=${lat}&lon=${lon}`)
+          if (r.data) {
+            cityName = r.data.state
+              ? `${r.data.name}, ${r.data.state}, ${r.data.country}`
+              : `${r.data.name}, ${r.data.country}`
+          }
+        } catch { /* fallback: backend keeps existing city */ }
+        try {
+          await api.post('/api/v1/weather/location', { lat, lon, city: cityName })
           setShowCityInput(false)
           load()
         } finally {
@@ -191,7 +202,8 @@ export default function Dashboard() {
     setCitySuggestions([])
     setCity('')
     setShowCityInput(false)
-    await api.post('/api/v1/weather/location', { lat: s.lat, lon: s.lon })
+    const cityName = s.state ? `${s.name}, ${s.state}, ${s.country}` : `${s.name}, ${s.country}`
+    await api.post('/api/v1/weather/location', { lat: s.lat, lon: s.lon, city: cityName })
     load()
   }
 

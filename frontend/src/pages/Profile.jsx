@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import api from '../api'
 
 const STYLES_LIST = ['casual', 'smart casual', 'business', 'sport', 'streetwear', 'formal']
@@ -46,6 +46,13 @@ export default function Profile() {
   const [pwdSaving, setPwdSaving] = useState(false)
   const [pwdMsg,    setPwdMsg]    = useState(null)
 
+  const [location, setLocation] = useState({ city: '', latitude: '', longitude: '' })
+  const [locSaving, setLocSaving] = useState(false)
+  const [locMsg,    setLocMsg]    = useState(null)
+  const [geoLoading, setGeoLoading] = useState(false)
+  const [citySuggestions, setCitySuggestions] = useState([])
+  const searchTimer = useRef(null)
+
   const [prefs, setPrefs] = useState({
     styles: '', favorite_colors: '', disliked_colors: '',
     heat_sensitivity: 'normal', allow_layering: true,
@@ -55,6 +62,19 @@ export default function Profile() {
 
   useEffect(() => {
     api.get('/api/v1/profile/preferences').then(r => setPrefs(r.data))
+    // pull fresh user (city/lat/lon may not be in localStorage from older logins)
+    api.get('/api/v1/auth/me').then(r => {
+      const u = r.data
+      setLocation({
+        city:      u.city ?? '',
+        latitude:  u.latitude  != null ? String(u.latitude)  : '',
+        longitude: u.longitude != null ? String(u.longitude) : '',
+      })
+      const cached = JSON.parse(localStorage.getItem('user') || '{}')
+      const merged = { ...cached, name: u.name, email: u.email, role: u.role, city: u.city }
+      localStorage.setItem('user', JSON.stringify(merged))
+      setUser(merged)
+    }).catch(() => {})
   }, [])
 
   const saveAccount = async () => {
@@ -74,6 +94,91 @@ export default function Profile() {
       setAccountMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to update' })
     } finally {
       setAccountSaving(false)
+    }
+  }
+
+  const handleCityInput = val => {
+    // typing invalidates previously-detected coordinates so we don't save mismatched data
+    setLocation(l => ({ ...l, city: val, latitude: '', longitude: '' }))
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (!val.trim() || val.length < 2) { setCitySuggestions([]); return }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/v1/weather/search?q=${encodeURIComponent(val)}`)
+        setCitySuggestions(res.data || [])
+      } catch { setCitySuggestions([]) }
+    }, 400)
+  }
+
+  const pickSuggestion = s => {
+    setLocation({
+      city:      s.state ? `${s.name}, ${s.state}, ${s.country}` : `${s.name}, ${s.country}`,
+      latitude:  String(s.lat),
+      longitude: String(s.lon),
+    })
+    setCitySuggestions([])
+  }
+
+  const useMyLocation = () => {
+    if (!('geolocation' in navigator)) {
+      setLocMsg({ type: 'error', text: 'Geolocation is not supported by this browser' })
+      return
+    }
+    setGeoLoading(true)
+    setLocMsg(null)
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const lat = pos.coords.latitude
+        const lon = pos.coords.longitude
+        let cityName = ''
+        try {
+          const res = await api.get(`/api/v1/weather/reverse?lat=${lat}&lon=${lon}`)
+          if (res.data) {
+            cityName = res.data.state
+              ? `${res.data.name}, ${res.data.state}, ${res.data.country}`
+              : `${res.data.name}, ${res.data.country}`
+          }
+        } catch { /* fallback: leave city as-is */ }
+        setLocation(l => ({
+          city:      cityName || l.city,
+          latitude:  lat.toFixed(5),
+          longitude: lon.toFixed(5),
+        }))
+        setCitySuggestions([])
+        setGeoLoading(false)
+      },
+      err => {
+        setLocMsg({ type: 'error', text: err.message || 'Failed to get location' })
+        setGeoLoading(false)
+      },
+      { timeout: 10000, enableHighAccuracy: false },
+    )
+  }
+
+  const saveLocation = async () => {
+    setLocSaving(true)
+    setLocMsg(null)
+    const payload = { city: location.city.trim() }
+    if (location.latitude  !== '') payload.latitude  = parseFloat(location.latitude)
+    if (location.longitude !== '') payload.longitude = parseFloat(location.longitude)
+    if (payload.latitude  !== undefined && Number.isNaN(payload.latitude))  { setLocMsg({ type: 'error', text: 'Latitude is invalid' }); setLocSaving(false); return }
+    if (payload.longitude !== undefined && Number.isNaN(payload.longitude)) { setLocMsg({ type: 'error', text: 'Longitude is invalid' }); setLocSaving(false); return }
+    try {
+      const res = await api.patch('/api/v1/auth/me', payload)
+      const updated = { ...user, city: res.data.city }
+      localStorage.setItem('user', JSON.stringify(updated))
+      setUser(updated)
+      setLocation({
+        city:      res.data.city ?? '',
+        latitude:  res.data.latitude  != null ? String(res.data.latitude)  : '',
+        longitude: res.data.longitude != null ? String(res.data.longitude) : '',
+      })
+      setLocMsg({ type: 'success', text: 'Location updated! Weather will refresh on next outfit.' })
+      setTimeout(() => setLocMsg(null), 3000)
+    } catch (e) {
+      setLocMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to update location' })
+    } finally {
+      setLocSaving(false)
     }
   }
 
@@ -167,6 +272,73 @@ export default function Profile() {
             >
               {accountSaving ? 'Saving…' : 'Save Account'}
             </button>
+          </div>
+        </Section>
+      </div>
+
+      {/* Location */}
+      <div className="card" style={{ padding: 28, marginBottom: 20 }}>
+        <Section title="Location">
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 12, lineHeight: 1.4 }}>
+            Used to fetch local weather and adjust outfit recommendations.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ position: 'relative' }}>
+              <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>City</label>
+              <input
+                placeholder="Start typing — e.g. Almaty"
+                value={location.city}
+                onChange={e => handleCityInput(e.target.value)}
+                onBlur={() => setTimeout(() => setCitySuggestions([]), 150)}
+                style={INPUT_STYLE}
+              />
+              {citySuggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0,
+                  background: '#fff', borderRadius: 8, marginTop: 4,
+                  border: '1px solid #e5e5e5', zIndex: 20, overflow: 'hidden',
+                  boxShadow: '0 4px 12px rgba(0,0,0,.08)',
+                }}>
+                  {citySuggestions.map((s, i) => (
+                    <div
+                      key={i}
+                      onMouseDown={() => pickSuggestion(s)}
+                      style={{
+                        padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#333',
+                        borderBottom: i < citySuggestions.length - 1 ? '1px solid #f0f0f0' : 'none',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                    >
+                      {s.name}{s.state ? `, ${s.state}` : ''}, {s.country}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {locMsg && (
+              <div className={`alert alert-${locMsg.type === 'success' ? 'success' : 'error'}`}>
+                {locMsg.text}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="btn btn-secondary"
+                style={{ height: 40, fontSize: 14, flex: 1 }}
+                onClick={useMyLocation}
+                disabled={geoLoading}
+              >
+                {geoLoading ? 'Detecting…' : '📍 Use my location'}
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ height: 40, fontSize: 14, flex: 1 }}
+                onClick={saveLocation}
+                disabled={locSaving}
+              >
+                {locSaving ? 'Saving…' : 'Save Location'}
+              </button>
+            </div>
           </div>
         </Section>
       </div>

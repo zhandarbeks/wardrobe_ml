@@ -1,6 +1,7 @@
 import time
 import os
 import httpx
+from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -64,6 +65,9 @@ async def current(
             db.query(User).filter(User.id == uid).update({"latitude": lat, "longitude": lon})
             db.commit()
         result = await _fetch_weather(lat, lon)
+        # prefer the user-saved name (from Profile or suggestion pick) over OpenWeather's bare city
+        if user.city:
+            result["city"] = user.city
     except Exception:
         result = {
             "temp": 15, "feels_like": 15, "wind_speed": 0, "pop": 0,
@@ -79,8 +83,18 @@ class CityBody(BaseModel):
 
 
 class LocationBody(BaseModel):
-    lat: float
-    lon: float
+    lat:  float
+    lon:  float
+    city: Optional[str] = None  # optional resolved name (from suggestion or reverse-geocode)
+
+
+def _invalidate_caches(uid):
+    _cache.pop(uid, None)
+    try:
+        from routers.outfits import _wcache
+        _wcache.pop(uid, None)
+    except Exception:
+        pass
 
 
 @router.post("/city")
@@ -89,13 +103,14 @@ async def set_city(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # User typed a city by hand → coords from previous location are stale, clear them.
     db.query(User).filter(User.id == user.id).update({
         "city": body.city,
         "latitude": None,
         "longitude": None,
     })
     db.commit()
-    _cache.pop(user.id, None)
+    _invalidate_caches(user.id)
     return {"ok": True}
 
 
@@ -105,15 +120,40 @@ async def set_location(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Save coordinates from browser Geolocation API."""
-    db.query(User).filter(User.id == user.id).update({
-        "latitude": body.lat,
-        "longitude": body.lon,
-        "city": None,
-    })
+    """Save coordinates from browser Geolocation API or a picked suggestion.
+    If `city` is supplied (e.g. resolved from suggestion / reverse-geocode), persist it.
+    Otherwise leave the existing city untouched so it stays in sync with Profile.
+    """
+    update = {"latitude": body.lat, "longitude": body.lon}
+    if body.city is not None:
+        update["city"] = body.city.strip() or None
+    db.query(User).filter(User.id == user.id).update(update)
     db.commit()
-    _cache.pop(user.id, None)
+    _invalidate_caches(user.id)
     return {"ok": True}
+
+
+@router.get("/reverse")
+async def reverse_geocode(lat: float, lon: float):
+    """Reverse-geocode coordinates → city/state/country via OpenWeather."""
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            geo = (await c.get(
+                "http://api.openweathermap.org/geo/1.0/reverse",
+                params={"lat": lat, "lon": lon, "limit": 1, "appid": KEY},
+            )).json()
+        if not isinstance(geo, list) or not geo:
+            return None
+        g = geo[0]
+        return {
+            "name":    g["name"],
+            "country": g.get("country", ""),
+            "state":   g.get("state", ""),
+            "lat":     g["lat"],
+            "lon":     g["lon"],
+        }
+    except Exception:
+        return None
 
 
 @router.get("/search")
