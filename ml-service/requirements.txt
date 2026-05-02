@@ -5,5 +5,4 @@ pillow
 numpy
 scikit-learn
 joblib
-tensorflow
-xgboost
+tensorflow>=2.16,<2.21

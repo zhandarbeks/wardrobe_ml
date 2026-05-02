@@ -57,8 +57,11 @@ export default function Profile() {
     styles: '', favorite_colors: '', disliked_colors: '',
     heat_sensitivity: 'normal', allow_layering: true,
   })
+  const [savedPrefs, setSavedPrefs] = useState(null)  // baseline for dirty check
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
+
+  const [statsInfo, setStatsInfo] = useState(null)  // {total_items, total_worn}
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deletePwd,  setDeletePwd]  = useState('')
@@ -69,7 +72,16 @@ export default function Profile() {
   const [avatarBusy, setAvatarBusy] = useState(false)
 
   useEffect(() => {
-    api.get('/api/v1/profile/preferences').then(r => setPrefs(r.data))
+    api.get('/api/v1/profile/preferences').then(r => {
+      setPrefs(r.data)
+      setSavedPrefs(r.data)
+    })
+    api.get('/api/v1/wardrobe/stats')
+      .then(r => setStatsInfo({
+        total_items: r.data.total,
+        total_worn:  r.data.total_outfit_wears,
+      }))
+      .catch(() => {})
     // pull fresh user (city/lat/lon may not be in localStorage from older logins)
     api.get('/api/v1/auth/me').then(r => {
       const u = r.data
@@ -271,12 +283,29 @@ export default function Profile() {
     setSaving(true)
     try {
       await api.put('/api/v1/profile/preferences', prefs)
+      setSavedPrefs(prefs)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } finally {
       setSaving(false)
     }
   }
+
+  const prefsDirty = savedPrefs && (
+    prefs.styles           !== savedPrefs.styles ||
+    prefs.favorite_colors  !== savedPrefs.favorite_colors ||
+    prefs.disliked_colors  !== savedPrefs.disliked_colors ||
+    prefs.heat_sensitivity !== savedPrefs.heat_sensitivity ||
+    prefs.allow_layering   !== savedPrefs.allow_layering
+  )
+
+  // Warn before navigating away with unsaved Preferences
+  useEffect(() => {
+    if (!prefsDirty) return
+    const handler = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [prefsDirty])
 
   return (
     <div className="page" style={{ maxWidth: 600, margin: '0 auto' }}>
@@ -347,6 +376,26 @@ export default function Profile() {
         </div>
         <span className="tag" style={{ marginLeft: 'auto' }}>{user.role}</span>
       </div>
+
+      {/* Account info — quick stats */}
+      {statsInfo && (
+        <div className="grid grid-3" style={{ marginBottom: 20 }}>
+          {[
+            ['Items',       statsInfo.total_items],
+            ['Outfit wears', statsInfo.total_worn],
+            ['Member since',
+              user.created_at
+                ? new Date(user.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+                : '—',
+            ],
+          ].map(([label, val]) => (
+            <div key={label} className="card text-center" style={{ padding: 14 }}>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{val}</div>
+              <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Account Settings */}
       <div className="card" style={{ padding: 28, marginBottom: 20 }}>
@@ -648,13 +697,24 @@ export default function Profile() {
           </div>
         )}
 
+        {prefsDirty && !saved && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+            padding: '8px 12px', borderRadius: 8,
+            background: '#fef3c7', color: '#92400e', fontSize: 13, fontWeight: 500,
+          }}>
+            <span style={{ fontSize: 14 }}>●</span>
+            Unsaved changes — don't forget to click Save.
+          </div>
+        )}
+
         <button
           className="btn btn-primary w-full"
           style={{ height: 44, fontSize: 15 }}
           onClick={save}
-          disabled={saving}
+          disabled={saving || !prefsDirty}
         >
-          {saving ? 'Saving…' : 'Save Preferences'}
+          {saving ? 'Saving…' : prefsDirty ? 'Save Preferences' : 'Saved'}
         </button>
       </div>
 
