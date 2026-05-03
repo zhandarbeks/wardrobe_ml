@@ -352,7 +352,42 @@ export default function Dashboard() {
                 {outfits.length > 1 && (
                   <div style={statBox}>
                     <div style={statLabel}>OPTION</div>
-                    <div style={statVal}>{outfitIdx + 1} / {outfits.length}</div>
+                    <div
+                      style={{
+                        ...statVal,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOutfitIdx((i) => (i - 1 + outfits.length) % outfits.length)
+                          setSaved(false)
+                        }}
+                        title="Previous option"
+                        style={{
+                          border: 'none', background: 'transparent', cursor: 'pointer',
+                          fontSize: 16, padding: '0 4px', lineHeight: 1,
+                        }}
+                      >
+                        ‹
+                      </button>
+                      <span>{outfitIdx + 1} / {outfits.length}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOutfitIdx((i) => (i + 1) % outfits.length)
+                          setSaved(false)
+                        }}
+                        title="Next option"
+                        style={{
+                          border: 'none', background: 'transparent', cursor: 'pointer',
+                          fontSize: 16, padding: '0 4px', lineHeight: 1,
+                        }}
+                      >
+                        ›
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
