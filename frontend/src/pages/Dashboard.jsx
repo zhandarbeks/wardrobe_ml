@@ -377,14 +377,22 @@ export default function Dashboard() {
               <>
                 <div className="flex justify-between items-center">
                   <div>
-                    <div className="temp">{Math.round(weather.temp ?? 15)}°C</div>
-                    <div className="desc">{weather.description}</div>
-                    <div style={{ marginTop: 8, opacity: .7, fontSize: 13 }}>
-                      Feels like {Math.round(weather.feels_like ?? 15)}°C
-                      &nbsp;·&nbsp;
-                      {Math.round(weather.wind_speed ?? 0)} m/s
+                    <div className="temp">
+                      {weather.temp != null ? `${Math.round(weather.temp)}°C` : '—'}
                     </div>
-                    <div style={{ marginTop: 4, opacity: .7, fontSize: 13 }}>{weather.city || '—'}</div>
+                    <div className="desc">{weather.description || (weather.city ? '' : 'City not detected')}</div>
+                    {weather.temp != null ? (
+                      <div style={{ marginTop: 8, opacity: .7, fontSize: 13 }}>
+                        Feels like {Math.round(weather.feels_like ?? weather.temp)}°C
+                        &nbsp;·&nbsp;
+                        {Math.round(weather.wind_speed ?? 0)} m/s
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 8, opacity: .8, fontSize: 13, color: '#fbbf24' }}>
+                        ⚠ Set a city to get current weather and accurate outfit recommendations
+                      </div>
+                    )}
+                    <div style={{ marginTop: 4, opacity: .7, fontSize: 13 }}>{weather.city || 'No city set'}</div>
                   </div>
                   {weather.icon && (
                     <img src={`https://openweathermap.org/img/wn/${weather.icon}@2x.png`} width={64} alt="" />
@@ -406,7 +414,17 @@ export default function Dashboard() {
                       <input
                         value={city}
                         onChange={e => handleCityInput(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && setUserCity()}
+                        onKeyDown={e => {
+                          if (e.key !== 'Enter') return
+                          e.preventDefault()
+                          // If we have suggestions visible, Enter picks the first one
+                          // (most-likely match). Falls back to literal-text submit if not.
+                          if (citySuggestions.length > 0) {
+                            pickSuggestion(citySuggestions[0])
+                          } else {
+                            setUserCity()
+                          }
+                        }}
                         placeholder="Search city…"
                         autoFocus
                         style={{
@@ -431,11 +449,16 @@ export default function Dashboard() {
                             style={{
                               padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#fff',
                               borderBottom: i < citySuggestions.length - 1 ? '1px solid rgba(255,255,255,.08)' : 'none',
+                              // First suggestion is highlighted as the Enter-key default
+                              background: i === 0 ? 'rgba(37,99,235,.25)' : 'transparent',
                             }}
                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.1)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            onMouseLeave={e => e.currentTarget.style.background = i === 0 ? 'rgba(37,99,235,.25)' : 'transparent'}
                           >
                             {s.name}{s.state ? `, ${s.state}` : ''}, {s.country}
+                            {i === 0 && (
+                              <span style={{ float: 'right', opacity: .55, fontSize: 11 }}>↵ Enter</span>
+                            )}
                           </div>
                         ))}
                       </div>

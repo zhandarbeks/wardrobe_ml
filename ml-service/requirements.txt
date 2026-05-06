@@ -6,3 +6,7 @@ numpy
 scikit-learn==1.6.1
 joblib
 tensorflow>=2.16,<2.21
+# SegFormer-B2 ATR clothes parser for garment-only segmentation at inference.
+# torch is installed separately in Dockerfile (CPU-only build) — transformers
+# imports it at runtime.
+transformers==4.44.2

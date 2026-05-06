@@ -9,3 +9,8 @@ build
 *.h5
 *.pkl
 ml-service/models/
+
+# Claude Code runtime artifacts (scheduled tasks state)
+.claude/
+
+backend/scripts

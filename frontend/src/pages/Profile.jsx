@@ -449,6 +449,12 @@ export default function Profile() {
                 value={location.city}
                 onChange={e => handleCityInput(e.target.value)}
                 onBlur={() => setTimeout(() => setCitySuggestions([]), 150)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && citySuggestions.length > 0) {
+                    e.preventDefault()
+                    pickSuggestion(citySuggestions[0])
+                  }
+                }}
                 style={INPUT_STYLE}
               />
               {citySuggestions.length > 0 && (
@@ -465,11 +471,15 @@ export default function Profile() {
                       style={{
                         padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#333',
                         borderBottom: i < citySuggestions.length - 1 ? '1px solid #f0f0f0' : 'none',
+                        background: i === 0 ? '#eff6ff' : '#fff',
                       }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
-                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                      onMouseLeave={e => e.currentTarget.style.background = i === 0 ? '#eff6ff' : '#fff'}
                     >
                       {s.name}{s.state ? `, ${s.state}` : ''}, {s.country}
+                      {i === 0 && (
+                        <span style={{ float: 'right', color: '#6b7280', fontSize: 11 }}>↵ Enter</span>
+                      )}
                     </div>
                   ))}
                 </div>

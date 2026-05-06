@@ -167,6 +167,41 @@ def _get_model_d():
     return _model_d
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SegFormer-B2 (ATR human parsing) — primary inference-time segmenter.
+#
+# mattmdjaga/segformer_b2_clothes is SegFormer-B2 fine-tuned on the ATR
+# human-parsing dataset. Unlike rembg / Model D (which do generic foreground
+# extraction and therefore include face/hair/limbs when a person is in the
+# photo), this model produces per-class masks. We keep only clothing/accessory
+# classes — the resulting mask is a "garment cutout" that is robust on real
+# user photos with cluttered backgrounds and people in frame.
+#
+# ATR class indices (https://huggingface.co/mattmdjaga/segformer_b2_clothes):
+#   0=background, 1=hat, 2=hair, 3=sunglasses, 4=upper-clothes, 5=skirt,
+#   6=pants, 7=dress, 8=belt, 9=left-shoe, 10=right-shoe, 11=face,
+#   12=left-leg, 13=right-leg, 14=left-arm, 15=right-arm, 16=bag, 17=scarf
+#
+# Heavy (~270 MB), so loaded lazily on first /analyze call.
+# ─────────────────────────────────────────────────────────────────────────────
+ATR_GARMENT_CLASSES = {1, 3, 4, 5, 6, 7, 8, 9, 10, 16, 17}
+SEGFORMER_MODEL_ID  = "mattmdjaga/segformer_b2_clothes"
+
+_segformer_proc  = None
+_segformer_model = None
+
+
+def _get_segformer():
+    """Lazy-load the SegFormer-B2 ATR clothes parser."""
+    global _segformer_proc, _segformer_model
+    if _segformer_model is None:
+        from transformers import SegformerImageProcessor, AutoModelForSemanticSegmentation
+        _segformer_proc  = SegformerImageProcessor.from_pretrained(SEGFORMER_MODEL_ID)
+        _segformer_model = AutoModelForSemanticSegmentation.from_pretrained(SEGFORMER_MODEL_ID)
+        _segformer_model.eval()
+    return _segformer_proc, _segformer_model
+
+
 def _get_scaler_b():
     global _scaler_b
     if _scaler_b is None:
@@ -251,8 +286,32 @@ def _composite_on_white(img: Image.Image, mask_2d: np.ndarray, size=IMG_SIZE) ->
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Segmentation: Model D primary, raw-image fallback when mask coverage is bad
+# Segmentation: SegFormer-ATR primary → Model D fallback → raw image last resort
 # ─────────────────────────────────────────────────────────────────────────────
+def _segment_with_segformer(img: Image.Image) -> np.ndarray:
+    """Run SegFormer-ATR and return a SEG_SIZE binary mask containing only
+    garment/accessory classes (no face, hair, limbs, background)."""
+    import torch
+    proc, model = _get_segformer()
+    rgb = img.convert("RGB")
+
+    inputs = proc(images=rgb, return_tensors="pt")
+    with torch.no_grad():
+        logits = model(**inputs).logits   # (1, n_classes, h_logits, w_logits)
+
+    # Upsample logits to original image size, then argmax → per-pixel class id
+    upsampled = torch.nn.functional.interpolate(
+        logits, size=rgb.size[::-1], mode="bilinear", align_corners=False
+    ).argmax(dim=1)[0].cpu().numpy()                         # (H, W)
+
+    # Keep only classes considered wearable garments / accessories
+    mask_full = np.isin(upsampled, list(ATR_GARMENT_CLASSES)).astype(np.uint8) * 255
+
+    # Resize to SEG_SIZE for downstream pipeline compatibility
+    mask_pil = Image.fromarray(mask_full).resize(SEG_SIZE, Image.BILINEAR)
+    return (np.array(mask_pil, dtype=np.float32) / 255.0 > 0.5).astype(np.float32)
+
+
 def _segment_model_d(img: Image.Image) -> np.ndarray:
     """Returns a binary mask at SEG_SIZE (numpy float32 in [0,1])."""
     model_d = _get_model_d()
@@ -341,20 +400,37 @@ async def analyze(file: UploadFile = File(...)):
     except Exception:
         raise HTTPException(400, "Cannot decode image")
 
-    # Stage 1 — segmentation (Model D, with raw-image fallback on bad coverage)
+    # Stage 1 — segmentation: SegFormer-ATR primary, Model D fallback, raw image last
+    # SegFormer is the right tool for user-uploaded photos: it produces
+    # garment-only masks (no face/hair/limbs) and was trained on real-world
+    # cluttered backgrounds. Model D (rembg distillate) is the fallback when
+    # SegFormer fails or returns a degenerate mask. Raw image is the last
+    # resort so the classifier still sees something instead of nothing.
     mask_seg = None
-    used_segmenter = "model_d"
+    used_segmenter = "segformer"
     try:
-        mask_seg = _segment_model_d(original)
+        mask_seg = _segment_with_segformer(original)
         coverage = float(mask_seg.mean())
         if not (MASK_COVERAGE_LO <= coverage <= MASK_COVERAGE_HI):
-            print(f"[/analyze] Model D coverage={coverage:.3f} — fallback to raw image")
+            print(f"[/analyze] SegFormer coverage={coverage:.3f} — fallback to Model D")
+            mask_seg = None
+    except Exception as e:
+        print(f"[/analyze] SegFormer failed: {e} — fallback to Model D")
+        mask_seg = None
+
+    if mask_seg is None:
+        used_segmenter = "model_d"
+        try:
+            mask_seg = _segment_model_d(original)
+            coverage = float(mask_seg.mean())
+            if not (MASK_COVERAGE_LO <= coverage <= MASK_COVERAGE_HI):
+                print(f"[/analyze] Model D coverage={coverage:.3f} — using raw image")
+                mask_seg = None
+                used_segmenter = "raw_image"
+        except Exception as e:
+            print(f"[/analyze] Model D failed: {e} — using raw image")
             mask_seg = None
             used_segmenter = "raw_image"
-    except Exception as e:
-        print(f"[/analyze] Model D failed: {e} — fallback to raw image")
-        mask_seg = None
-        used_segmenter = "raw_image"
 
     # Build no-bg preview for the frontend
     if mask_seg is not None:
@@ -445,10 +521,12 @@ def health():
         "status":     "ok",
         "service":    "ml-service v3",
         "models":     {
-            "model_a": "modelA_best.keras (EfficientNetB2 multi-head)",
-            "model_d": "modelD_best.keras (Attention U-Net)",
-            "model_b": "modelB_compatibility.h5 (Pairwise MLP)",
+            "model_a":   "modelA_best.keras (EfficientNetB2 multi-head)",
+            "model_d":   "modelD_best.keras (Attention U-Net) — fallback segmenter",
+            "model_b":   "modelB_compatibility.h5 (Pairwise MLP)",
             "embedding_extractor": "embedding_extractor.h5 (128-d)",
+            "segformer": f"{SEGFORMER_MODEL_ID} (primary inference segmenter, lazy-loaded)",
         },
+        "segformer_loaded": _segformer_model is not None,
         "training_metrics": summary.get("test_metrics", {}),
     }
