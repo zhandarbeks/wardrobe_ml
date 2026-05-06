@@ -67,6 +67,126 @@ def score_outfit(items: List[WardrobeItem], prefs: Optional[Preference]) -> floa
     return round(0.6 * color_avg + 0.4 * style_score, 3)
 
 
+#  ── Subcategory-based safety net ────────────────────────────────────────────
+#  Catches items whose stored category/temp_range is wrong (e.g. a hoodie
+#  classified as "top" by Model A would otherwise sneak into hot-weather
+#  outfits). Subcategory names below are the single strongest temperature
+#  signals on the garment.
+WARM_SUBCATEGORIES = {
+    "sweater", "sweatshirt", "pullover", "hoodie",
+    "jacket",  "blazer",     "coat",     "rain jacket",
+    "boots",   "scarf",
+}
+COOL_SUBCATEGORIES = {
+    "tank top", "t-shirt", "shorts",
+    "sandals",  "flip flops",
+}
+
+# Accessories grouped by visible "kind" — we pick at most one per kind so the
+# recommended outfit doesn't end up wearing two backpacks or three watches.
+# Subcategories not in this map are treated as their own kind.
+ACCESSORY_KINDS = {
+    "watch":      "jewelry",
+    "sunglasses": "eyewear",
+    "belt":       "belt",
+    "backpack":   "bag",
+    "handbag":    "bag",
+    "bag":        "bag",
+    "wallet":     "small",
+    "tie":        "neck",
+    "scarf":      "neck",
+    "hat":        "headwear",
+    "cap":        "headwear",
+}
+# Items that exist in users' wardrobes but rarely belong on an outfit board —
+# we deprioritise them when auto-attaching accessories.
+ACCESSORY_LOW_PRIORITY = {"wallet"}
+
+
+def _safe(item, t: float, pop: float, category: str) -> bool:
+    """Soft safety net — rejects items whose subcategory makes them obviously
+    inappropriate for the current weather. NOT absolute: at Tier 3 of
+    `_eligible_pool` we relax this so sparse wardrobes still get a result."""
+    sub = (item.subcategory or "").lower().strip()
+    if t > 22 and sub in WARM_SUBCATEGORIES:
+        return False
+    if t <  8 and sub in COOL_SUBCATEGORIES:
+        return False
+    if category == "footwear" and ("sandal" in sub or "flip flop" in sub):
+        if t < 18 or pop > 0.3:
+            return False
+    if category == "bottom" and "short" in sub and t < 15:
+        return False
+    return True
+
+
+# Backwards-compat alias for any external callers
+def _subcategory_appropriate(item, t: float) -> bool:
+    return _safe(item, t, pop=0.0, category=_item_category(item))
+
+
+def _closeness(item, t: float) -> float:
+    """0 if t is inside [temp_min, temp_max], otherwise positive distance."""
+    if item.temp_min <= t <= item.temp_max:
+        return 0.0
+    if t < item.temp_min:
+        return item.temp_min - t
+    return t - item.temp_max
+
+
+def _pick_accessories(pool, max_n: int = 2):
+    """Return up to `max_n` accessory items from `pool`, each from a different
+    visible kind. Wallets and other low-priority items are picked last."""
+    if not pool:
+        return []
+    high = [i for i in pool if (i.subcategory or "").lower() not in ACCESSORY_LOW_PRIORITY]
+    low  = [i for i in pool if (i.subcategory or "").lower() in     ACCESSORY_LOW_PRIORITY]
+    candidates = list(high)
+    random.shuffle(candidates)
+    random.shuffle(low)
+    candidates.extend(low)
+
+    chosen, seen_kinds = [], set()
+    for item in candidates:
+        sub  = (item.subcategory or "").lower().strip()
+        kind = ACCESSORY_KINDS.get(sub, sub or "other")
+        if kind in seen_kinds:
+            continue
+        chosen.append(item)
+        seen_kinds.add(kind)
+        if len(chosen) >= max_n:
+            break
+    return chosen
+
+
+def _eligible_pool(items, category: str, t: float, pop: float, max_fallback: int = 5):
+    """Items of `category` that suit temperature `t`.
+
+    Three-tier fallback so users with sparse wardrobes still get suggestions:
+      Tier 1 — _safe items whose stored temp_range covers t (ideal).
+      Tier 2 — _safe items closest to t (slightly out of range).
+      Tier 3 — ANY item in the category closest to t. Last resort — better to
+               recommend a t-shirt at cold weather than to show an empty
+               dashboard. The user can override anyway.
+    """
+    cat_items = [i for i in items if _item_category(i) == category]
+    safe = [i for i in cat_items if _safe(i, t, pop, category)]
+
+    # Tier 1
+    in_range_safe = [i for i in safe if i.temp_min <= t <= i.temp_max]
+    if in_range_safe:
+        return in_range_safe
+
+    # Tier 2
+    if safe:
+        safe.sort(key=lambda i: _closeness(i, t))
+        return safe[:max_fallback]
+
+    # Tier 3 — sparse wardrobe; relax safety net entirely
+    cat_items.sort(key=lambda i: _closeness(i, t))
+    return cat_items[:max_fallback]
+
+
 def recommend_outfits(
     items: List[WardrobeItem],
     prefs: Optional[Preference],
@@ -84,36 +204,12 @@ def recommend_outfits(
 
     allow_layering = prefs.allow_layering if prefs else True
 
-    def in_range(item):
-        return item.temp_min <= t <= item.temp_max
-
-    def cat(item):
-        return _item_category(item)
-
-    base_pool  = [i for i in items if cat(i) == "top"     and in_range(i)]
-    mid_pool   = [i for i in items if cat(i) == "mid"     and in_range(i)] if (t < 18 and allow_layering) else []
-    outer_pool = [i for i in items if cat(i) == "outer"   and in_range(i)] if t < 10 else []
-
-    bottom_pool = []
-    for i in items:
-        if cat(i) != "bottom" or not in_range(i):
-            continue
-        if i.subcategory and "short" in i.subcategory.lower() and t < 15:
-            continue
-        bottom_pool.append(i)
-
-    footwear_pool = []
-    for i in items:
-        if cat(i) != "footwear" or not in_range(i):
-            continue
-        if i.subcategory and "sandal" in i.subcategory.lower():
-            if t < 18 or pop > 0.3:
-                continue
-        footwear_pool.append(i)
-
-    if not base_pool:   base_pool   = [i for i in items if cat(i) == "top"]
-    if not bottom_pool: bottom_pool = [i for i in items if cat(i) == "bottom"]
-    if not footwear_pool: footwear_pool = [i for i in items if cat(i) == "footwear"]
+    base_pool      = _eligible_pool(items, "top",       t, pop)
+    mid_pool       = _eligible_pool(items, "mid",       t, pop) if (t < 18 and allow_layering) else []
+    outer_pool     = _eligible_pool(items, "outer",     t, pop) if t < 10 else []
+    bottom_pool    = _eligible_pool(items, "bottom",    t, pop)
+    footwear_pool  = _eligible_pool(items, "footwear",  t, pop)
+    accessory_pool = _eligible_pool(items, "accessory", t, pop)
 
     if not base_pool or not bottom_pool:
         return []
@@ -128,6 +224,9 @@ def recommend_outfits(
         if shoe:  outfit.append(shoe)
         if mid_pool:   outfit.append(random.choice(mid_pool))
         if outer_pool: outfit.append(random.choice(outer_pool))
+        # Accessories: up to 2 items of distinct kinds (e.g. bag + watch).
+        # Picked per-combo so different outfit options surface different accessories.
+        outfit.extend(_pick_accessories(accessory_pool, max_n=2))
         combos.append((outfit, score_outfit(outfit, prefs)))
 
     combos.sort(key=lambda x: x[1], reverse=True)

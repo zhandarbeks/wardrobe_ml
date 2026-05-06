@@ -14,6 +14,8 @@ import httpx
 from database import get_db
 from models import User, WardrobeItem, MLLog, Category, Colour, Material, Style, Outfit, OutfitItem
 from deps import get_current_user
+from temp_defaults import derive_temp_range
+from style_defaults import derive_styles
 
 router = APIRouter(prefix="/api/v1/wardrobe", tags=["wardrobe"])
 
@@ -182,6 +184,29 @@ def get_wardrobe(
     return [item_dict(i) for i in _load_items(db, user.id, category)]
 
 
+@router.get("/temp-suggestion")
+def temp_suggestion(
+    category:    str,
+    subcategory: Optional[str] = None,
+    material:    Optional[str] = None,
+):
+    """Return suggested (temp_min, temp_max) for an item, given its attributes.
+    Used by the AddItem UI to pre-fill the temperature inputs.
+    Public-ish (auth not required) — no user data leaves the server."""
+    t_min, t_max = derive_temp_range(category, subcategory, material)
+    return {"temp_min": t_min, "temp_max": t_max}
+
+
+@router.get("/style-suggestion")
+def style_suggestion(
+    category:    str,
+    subcategory: Optional[str] = None,
+    material:    Optional[str] = None,
+):
+    """Return suggested style tags for an item, given its attributes."""
+    return {"styles": derive_styles(category, subcategory, material)}
+
+
 @router.post("/analyze")
 async def analyze(
     file: UploadFile = File(...),
@@ -244,8 +269,10 @@ class ItemCreate(BaseModel):
     material:       Optional[str]   = None
     brand:          Optional[str]   = None
     styles:         Optional[str]   = None   # comma-separated
-    temp_min:       int             = -30
-    temp_max:       int             = 40
+    # When None, the server auto-derives a sensible range from
+    # (category, subcategory, material) via temp_defaults.derive_temp_range.
+    temp_min:       Optional[int]   = None
+    temp_max:       Optional[int]   = None
     image_url:      Optional[str]   = None
     image_no_bg_url: Optional[str]  = None
     ml_confidence:  Optional[float] = None
@@ -262,6 +289,18 @@ def create_item(
     col  = _get_or_create(db, Colour,   body.color)
     mat  = _get_or_create(db, Material, body.material) if body.material else None
 
+    # If the client didn't supply both temp bounds, auto-derive them from
+    # (category, subcategory, material). We still respect partial input —
+    # a user-set min combined with an auto-derived max stays valid.
+    if body.temp_min is None or body.temp_max is None:
+        auto_min, auto_max = derive_temp_range(
+            body.category, body.subcategory, body.material,
+        )
+        temp_min = body.temp_min if body.temp_min is not None else auto_min
+        temp_max = body.temp_max if body.temp_max is not None else auto_max
+    else:
+        temp_min, temp_max = body.temp_min, body.temp_max
+
     item = WardrobeItem(
         user_id         = user.id,
         name            = body.name,
@@ -270,9 +309,9 @@ def create_item(
         material_id     = mat.id if mat else None,
         brand           = body.brand,
         subcategory     = body.subcategory,
-        temp_min        = body.temp_min,
-        temp_max        = body.temp_max,
-        season          = calc_season(body.temp_min, body.temp_max),
+        temp_min        = temp_min,
+        temp_max        = temp_max,
+        season          = calc_season(temp_min, temp_max),
         image_url       = body.image_url,
         image_no_bg_url = body.image_no_bg_url,
         ml_confidence   = body.ml_confidence,
@@ -281,12 +320,18 @@ def create_item(
     db.add(item)
     db.flush()
 
-    if body.styles:
-        for s_name in body.styles.split(","):
-            s_name = s_name.strip()
-            if s_name:
-                style = _get_or_create(db, Style, s_name)
-                item.styles.append(style)
+    # Determine which styles to attach.
+    # If the client passed a non-empty `styles` string we treat it as
+    # explicit user choice (including the empty case "" — user wants none).
+    # Only auto-derive when the field was omitted entirely (None).
+    if body.styles is None:
+        style_names = derive_styles(body.category, body.subcategory, body.material)
+    else:
+        style_names = [s.strip() for s in body.styles.split(",") if s.strip()]
+
+    for s_name in style_names:
+        style = _get_or_create(db, Style, s_name)
+        item.styles.append(style)
 
     db.commit()
     db.refresh(item)

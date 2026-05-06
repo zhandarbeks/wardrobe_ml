@@ -61,7 +61,7 @@ TYPE_TO_SUBCATEGORY = {
     "Casual Shoes": "casual shoes","Sports Shoes": "sports shoes",
     "Formal Shoes": "formal shoes","Heels":        "heels",
     "Flats":        "flats",       "Sandals":      "sandals",
-    "Flip Flops":   "sandals",
+    "Flip Flops":   "flip flops",
     "Watches":      "watch",       "Sunglasses":   "sunglasses",
     "Belts":        "belt",        "Wallets":      "wallet",
     "Backpacks":    "backpack",    "Handbags":     "bag",
