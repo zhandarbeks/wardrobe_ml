@@ -47,24 +47,81 @@ def _item_styles(item: WardrobeItem) -> set:
     return {s.name.lower() for s in (item.styles or [])}
 
 
-def score_outfit(items: List[WardrobeItem], prefs: Optional[Preference]) -> float:
+# ── Final-score blender ──────────────────────────────────────────────────────
+# Final score = weighted average of breakdown components, each in [0, 1].
+# When ML compatibility is available we blend it in at moderate weight; we
+# don't let ML *replace* the rule-based score because Model B trained on a
+# small pair set is sometimes confidently wrong on real-world inputs.
+SCORE_WEIGHTS_NO_ML = {
+    "color_harmony": 0.50,
+    "style_match":   0.20,
+    "weather_fit":   0.30,
+}
+SCORE_WEIGHTS_WITH_ML = {
+    "color_harmony": 0.35,
+    "style_match":   0.15,
+    "weather_fit":   0.25,
+    "ml_compat":     0.25,
+}
+
+
+def _blend_final(bd: dict) -> float:
+    """Compose `score_breakdown` components into a final [0, 1] score.
+    Uses ML weights when ml_compat is present, otherwise no-ML weights.
+    Missing components are treated as 0 — but that only happens for
+    weather_fit which is always set during recommend_outfits."""
+    weights = SCORE_WEIGHTS_WITH_ML if bd.get("ml_compat") is not None else SCORE_WEIGHTS_NO_ML
+    score = sum(weights[k] * float(bd.get(k, 0.0)) for k in weights)
+    return round(max(0.0, min(1.0, score)), 3)
+
+
+def score_outfit(items: List[WardrobeItem], prefs: Optional[Preference]):
+    """Return (final_score, breakdown_dict).
+
+    Final score is the historical raw value (0.6 * color_avg + 0.4 * style_score).
+    Breakdown exposes the components so the UI can show "why this score".
+    All breakdown values are normalised to [0, 1] for human-friendly display.
+    """
     colors = [_item_color(i) for i in items if _item_color(i)]
     pairs  = list(itertools.combinations(colors, 2))
     color_avg = sum(_hue_score(a, b) for a, b in pairs) / len(pairs) if pairs else 0.0
 
     style_score = 0.0
+    style_matches      = 0
+    fav_color_matches  = 0
+    disliked_matches   = 0
     if prefs:
         pref_styles = {s.name.lower() for s in (prefs.styles or [])}
         fav_colors  = {c.name.lower() for c in (prefs.favourite_colours or [])}
         disliked    = {c.name.lower() for c in (prefs.disliked_colours  or [])}
         for item in items:
             if _item_styles(item) & pref_styles:
-                style_score += 1.0
+                style_score += 1.0; style_matches += 1
             col = _item_color(item).lower()
-            if col in fav_colors:  style_score += 0.5
-            if col in disliked:    style_score -= 1.0
+            if col in fav_colors:
+                style_score += 0.5; fav_color_matches += 1
+            if col in disliked:
+                style_score -= 1.0; disliked_matches += 1
 
-    return round(0.6 * color_avg + 0.4 * style_score, 3)
+    final = round(0.6 * color_avg + 0.4 * style_score, 3)
+
+    # Itten harmony scores live in [-1, 3]; map to [0, 1] for display.
+    color_norm = max(0.0, min(1.0, (color_avg + 1.0) / 4.0))
+    # style_score has no fixed cap — clamp display to [0, 1] over a sensible range.
+    style_norm = max(0.0, min(1.0, style_score / 3.0))
+
+    breakdown = {
+        "color_harmony":     round(color_norm, 3),
+        "style_match":       round(style_norm, 3),
+        "color_pairs":       len(pairs),
+        "style_matches":     style_matches,
+        "fav_color_matches": fav_color_matches,
+        "disliked_matches":  disliked_matches,
+        "raw_color_avg":     round(color_avg, 2),
+        "raw_style_score":   round(style_score, 2),
+        "n_items":           len(items),
+    }
+    return final, breakdown
 
 
 #  ── Subcategory-based safety net ────────────────────────────────────────────
@@ -227,12 +284,22 @@ def recommend_outfits(
         # Accessories: up to 2 items of distinct kinds (e.g. bag + watch).
         # Picked per-combo so different outfit options surface different accessories.
         outfit.extend(_pick_accessories(accessory_pool, max_n=2))
-        combos.append((outfit, score_outfit(outfit, prefs)))
+        rule_sc, bd = score_outfit(outfit, prefs)
 
+        # Weather component: fraction of outfit's items whose temp range covers t
+        covered = sum(1 for i in outfit if i.temp_min <= t <= i.temp_max)
+        bd["weather_fit"] = round(covered / max(1, len(outfit)), 3)
+        bd["t_target"]    = round(t, 1)
+        bd["raw_rule_score"] = rule_sc
+
+        final = _blend_final(bd)
+        combos.append((outfit, final, bd))
+
+    # Sort by the blended final score so outfits with bad weather fit don't win
     combos.sort(key=lambda x: x[1], reverse=True)
 
     seen, results = set(), []
-    for outfit_items, sc in combos:
+    for outfit_items, final, bd in combos:
         key = frozenset(i.id for i in outfit_items)
         if key in seen:
             continue
@@ -250,8 +317,9 @@ def recommend_outfits(
                 }
                 for i in outfit_items
             ],
-            "score":    sc,
-            "t_target": round(t, 1),
+            "score":           final,
+            "score_breakdown": bd,
+            "t_target":        round(t, 1),
         })
         if len(results) >= top_n:
             break
@@ -292,7 +360,15 @@ async def ml_rescore_outfits(outfits: list, ml_url: str) -> list:
                     except Exception:
                         pass
                 if scores:
-                    outfit["score"] = round(sum(scores) / len(scores), 3)
+                    ml_avg = sum(scores) / len(scores)
+                    bd = outfit.setdefault("score_breakdown", {})
+                    bd["ml_compat"] = round(ml_avg, 3)
+                    bd["ml_pairs"]  = len(scores)
+                    # Re-blend with ML as one weighted component instead of replacing.
+                    # Model B trained on small data can be confidently wrong on real-world
+                    # inputs; capping its weight at ~0.25 keeps a bad ML score from sinking
+                    # an otherwise good outfit, but still rewards genuinely compatible pairs.
+                    outfit["score"] = _blend_final(bd)
     except Exception:
         pass
 

@@ -18,6 +18,143 @@ const COLOR_HEX = {
   beige: '#e8dcc8', brown: '#8b4513', camel: '#c19a6b',
 }
 
+// Hover-card: human-readable breakdown of an outfit's score.
+// Backend returns score_breakdown with values normalised to [0, 1].
+// Weights mirror SCORE_WEIGHTS_* in backend/recommend.py.
+const SCORE_WEIGHTS_NO_ML   = { color_harmony: 0.50, style_match: 0.20, weather_fit: 0.30 }
+const SCORE_WEIGHTS_WITH_ML = { color_harmony: 0.35, style_match: 0.15, weather_fit: 0.25, ml_compat: 0.25 }
+
+function ScoreBreakdownTooltip({ bd, score }) {
+  const pct = (v) => `${Math.round((v ?? 0) * 100)}%`
+  const f2  = (v) => Number(v ?? 0).toFixed(2)
+  const hasML = bd.ml_compat != null
+  const W = hasML ? SCORE_WEIGHTS_WITH_ML : SCORE_WEIGHTS_NO_ML
+
+  const terms = [
+    { key: 'color_harmony', label: 'color',   value: bd.color_harmony, color: '#2563eb',
+      detail: `${bd.color_pairs ?? 0} pair${(bd.color_pairs ?? 0) === 1 ? '' : 's'}` },
+    { key: 'style_match',   label: 'style',   value: bd.style_match,   color: '#0a8754',
+      detail: `${bd.style_matches ?? 0} item${(bd.style_matches ?? 0) === 1 ? '' : 's'}` },
+    { key: 'weather_fit',   label: 'weather', value: bd.weather_fit,   color: '#ea580c',
+      detail: `${bd.t_target ?? '?'}°C target` },
+    ...(hasML ? [{ key: 'ml_compat', label: 'ml', value: bd.ml_compat, color: '#7c3aed',
+      detail: `${bd.ml_pairs ?? 0} pair${(bd.ml_pairs ?? 0) === 1 ? '' : 's'}` }] : []),
+  ]
+  const sumOfTerms = terms.reduce((s, t) => s + W[t.key] * (t.value ?? 0), 0)
+
+  // ── Inner row helpers ───────────────────────────────────────────────────
+  const Bar = ({ t }) => (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 3 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 2, background: t.color, flexShrink: 0 }} />
+        <span style={{ color: '#374151', fontWeight: 600 }}>{t.label}</span>
+        <span style={{ color: '#9ca3af', fontSize: 10 }}>· {t.detail}</span>
+        <span style={{ marginLeft: 'auto', color: t.color, fontWeight: 700 }}>{pct(t.value)}</span>
+      </div>
+      <div style={{ height: 4, background: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{
+          height: '100%',
+          width: `${Math.max(0, Math.min(1, t.value ?? 0)) * 100}%`,
+          background: t.color, transition: 'width 0.2s',
+        }} />
+      </div>
+    </div>
+  )
+
+  // Single formula row — fixed-width columns so weights/values/products line up.
+  const FormulaRow = ({ t, isFirst }) => (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 0,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: 11, lineHeight: '20px', color: '#374151',
+    }}>
+      <span style={{ width: 14, color: '#9ca3af', textAlign: 'center' }}>
+        {isFirst ? '=' : '+'}
+      </span>
+      <span style={{ width: 9, height: 9, borderRadius: 2, background: t.color, marginRight: 6, flexShrink: 0 }} />
+      <span style={{ width: 56, color: t.color, fontWeight: 600 }}>{t.label}</span>
+      <span style={{ width: 36, textAlign: 'right', color: '#111827' }}>{W[t.key].toFixed(2)}</span>
+      <span style={{ width: 14, textAlign: 'center', color: '#9ca3af' }}>×</span>
+      <span style={{ width: 32, textAlign: 'right' }}>{f2(t.value)}</span>
+      <span style={{ width: 14, textAlign: 'center', color: '#9ca3af' }}>=</span>
+      <span style={{ flex: 1, textAlign: 'right', color: '#111827', fontWeight: 600 }}>
+        {f2(W[t.key] * (t.value ?? 0))}
+      </span>
+    </div>
+  )
+
+  return (
+    <div style={{
+      position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 50,
+      width: 320, padding: 12, borderRadius: 10,
+      background: '#fff', border: '1px solid #e5e7eb',
+      boxShadow: '0 6px 18px rgba(0,0,0,0.10)',
+      color: '#374151', textAlign: 'left', cursor: 'default',
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
+        Why this score?
+      </div>
+
+      {/* Component bars */}
+      {terms.map(t => <Bar key={t.key} t={t} />)}
+
+      {/* Formula — identical to backend SCORE_WEIGHTS_*. Each row is colored
+          to match its progress bar above, columns are fixed-width so numbers
+          line up vertically. */}
+      <div style={{
+        marginTop: 4, paddingTop: 8, borderTop: '1px dashed #d1d5db',
+      }}>
+        <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Formula{hasML ? ' · with ML' : ''}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, lineHeight: '20px', color: '#9ca3af', marginBottom: 2 }}>
+          <span style={{ width: 14 }} />
+          <span style={{ width: 9, marginRight: 6 }} />
+          <span style={{ width: 56, color: '#111827', fontWeight: 700 }}>final</span>
+        </div>
+
+        {terms.map((t, i) => (
+          <FormulaRow key={t.key} t={t} isFirst={i === 0} />
+        ))}
+
+        {/* Sum line */}
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          fontSize: 11, lineHeight: '20px', marginTop: 4,
+          paddingTop: 4, borderTop: '1px solid #e5e7eb',
+        }}>
+          <span style={{ width: 14 + 9 + 6 + 56 + 36 + 14 + 32 + 14 }} />
+          <span style={{ flex: 1, textAlign: 'right', color: '#111827', fontWeight: 700 }}>
+            {f2(sumOfTerms)}
+          </span>
+        </div>
+      </div>
+
+      {/* Final */}
+      <div style={{
+        marginTop: 10, paddingTop: 8, borderTop: '1px solid #e5e7eb',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12,
+      }}>
+        <span style={{ color: '#6b7280' }}>Final score</span>
+        <strong style={{ fontSize: 14, color: '#111827' }}>⭐ {f2(score)}</strong>
+      </div>
+
+      {(bd.disliked_matches ?? 0) > 0 && (
+        <div style={{ marginTop: 6, color: '#b91c1c', fontSize: 11 }}>
+          ⚠ {bd.disliked_matches} item(s) in your disliked colors
+        </div>
+      )}
+      {bd.raw_color_avg != null && (
+        <div style={{ marginTop: 6, fontSize: 10, color: '#9ca3af' }}>
+          raw: color_avg={bd.raw_color_avg}, style_score={bd.raw_style_score}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Collage grid: top-layer items side by side, bottom full-width, footwear+accessory small row
 function OutfitCollage({ items }) {
   const sorted = [...items].sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9))
@@ -104,6 +241,7 @@ export default function Dashboard() {
   const [outfitIdx,       setOutfitIdx]       = useState(0)
   const [saving,          setSaving]          = useState(false)
   const [saved,           setSaved]           = useState(false)
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false)
   const [city,            setCity]            = useState('')
   const [showCityInput,   setShowCityInput]   = useState(false)
   const [geoLoading,      setGeoLoading]      = useState(false)
@@ -341,9 +479,16 @@ export default function Dashboard() {
 
               {/* Score + T target */}
               <div style={{ display: 'flex', gap: 8, margin: '16px 0' }}>
-                <div style={statBox}>
+                <div
+                  style={{ ...statBox, position: 'relative', cursor: current.score_breakdown ? 'help' : 'default' }}
+                  onMouseEnter={() => setShowScoreBreakdown(true)}
+                  onMouseLeave={() => setShowScoreBreakdown(false)}
+                >
                   <div style={statLabel}>SCORE</div>
                   <div style={statVal}>⭐ {current.score.toFixed(2)}</div>
+                  {showScoreBreakdown && current.score_breakdown && (
+                    <ScoreBreakdownTooltip bd={current.score_breakdown} score={current.score} />
+                  )}
                 </div>
                 <div style={statBox}>
                   <div style={statLabel}>T TARGET</div>

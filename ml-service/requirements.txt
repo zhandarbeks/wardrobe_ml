@@ -3,6 +3,6 @@ uvicorn==0.24.0
 python-multipart==0.0.6
 pillow
 numpy
-scikit-learn
+scikit-learn==1.6.1
 joblib
 tensorflow>=2.16,<2.21

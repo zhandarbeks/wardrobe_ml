@@ -102,28 +102,64 @@ const TEMP_MATERIAL_MODIFIERS = {
 const TEMP_BOUND_MIN = -30, TEMP_BOUND_MAX = 45
 
 function deriveTempRange(category, subcategory, material) {
+  const r = explainTempRange(category, subcategory, material)
+  return r.final
+}
+
+// ── Explanation builder for the "Why these numbers?" popover ─────────────
+// Returns the same final range as deriveTempRange, but also exposes the
+// reasoning steps so the UI can render a transparent breakdown.
+function explainTempRange(category, subcategory, material) {
   const cat = (category    || '').toLowerCase().trim()
   const sub = (subcategory || '').toLowerCase().trim()
   const mat = (material    || '').toLowerCase().trim()
 
   let base = TEMP_BASE_RANGES[`${cat}|${sub}`]
-  // Cross-category subcategory lookup: a hoodie tagged as "top" still gets
-  // the warm-clothing range from "mid|hoodie" instead of falling back to
-  // the generic top default.
+  let baseLabel = sub ? `${cat} · ${sub}` : cat || 'unknown'
+  let baseHow   = 'exact_match'           // 'exact_match' | 'cross_category' | 'category_fallback' | 'global_fallback'
+  let baseFromKey = `${cat}|${sub}`
+
   if (!base && sub) {
     for (const key of Object.keys(TEMP_BASE_RANGES)) {
-      if (key.endsWith(`|${sub}`)) { base = TEMP_BASE_RANGES[key]; break }
+      if (key.endsWith(`|${sub}`)) {
+        base = TEMP_BASE_RANGES[key]
+        baseHow = 'cross_category'
+        baseFromKey = key                  // e.g. "mid|hoodie" when user picked "top|hoodie"
+        baseLabel = key.replace('|', ' · ')
+        break
+      }
     }
   }
-  if (!base) base = TEMP_CATEGORY_FALLBACK[cat] || [-5, 28]
+  if (!base) {
+    base = TEMP_CATEGORY_FALLBACK[cat]
+    if (base) {
+      baseHow = 'category_fallback'
+      baseLabel = `${cat} (category default)`
+    }
+  }
+  if (!base) {
+    base = [-5, 28]
+    baseHow = 'global_fallback'
+    baseLabel = 'global default'
+    baseFromKey = '*'
+  }
 
-  let [tmin, tmax] = base
-  const mod = TEMP_MATERIAL_MODIFIERS[mat]
-  if (mod) { tmin += mod.min; tmax += mod.max }
+  const baseMin = base[0], baseMax = base[1]
+  const mod = TEMP_MATERIAL_MODIFIERS[mat] || null
+  let tmin = baseMin + (mod ? mod.min : 0)
+  let tmax = baseMax + (mod ? mod.max : 0)
+  let clamped = false
+  if (tmin < TEMP_BOUND_MIN || tmax > TEMP_BOUND_MAX) clamped = true
   tmin = Math.max(TEMP_BOUND_MIN, Math.min(tmin, TEMP_BOUND_MAX))
   tmax = Math.max(TEMP_BOUND_MIN, Math.min(tmax, TEMP_BOUND_MAX))
   if (tmin > tmax) [tmin, tmax] = [tmax, tmin]
-  return [Math.round(tmin), Math.round(tmax)]
+
+  return {
+    base: { min: baseMin, max: baseMax, label: baseLabel, how: baseHow, key: baseFromKey },
+    material: mod ? { name: mat, minDelta: mod.min, maxDelta: mod.max } : null,
+    final: [Math.round(tmin), Math.round(tmax)],
+    clamped,
+  }
 }
 
 // ── Style suggestion mirror — backend/style_defaults.py ──────────────────
@@ -228,6 +264,7 @@ export default function AddItem() {
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const [tempUserEdited, setTempUserEdited] = useState(false)   // true once user types in temp_min/max
+  const [showTempExplain, setShowTempExplain] = useState(false) // toggles the "Why these numbers?" popover
   const [styleUserEdited, setStyleUserEdited] = useState(false) // true once user toggles a style chip
   const [autoStyles,     setAutoStyles]      = useState([])
   const navigate = useNavigate()
@@ -520,24 +557,105 @@ export default function AddItem() {
             </div>
 
             {/* Temperature range — auto-derived from category/subcategory/material */}
-            <div className="grid grid-2" style={{ gap: 12 }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Temp min (°C)</label>
-                <input
-                  type="number"
-                  value={form.temp_min}
-                  onChange={e => { set('temp_min', e.target.value); setTempUserEdited(true) }}
-                  min={-40} max={40}
-                />
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Temperature range</span>
+                <button
+                  type="button"
+                  onClick={() => setShowTempExplain(v => !v)}
+                  title="Why these numbers?"
+                  aria-label="Why these numbers?"
+                  style={{
+                    width: 18, height: 18, borderRadius: '50%',
+                    border: '1px solid #9ca3af', background: showTempExplain ? '#2563eb' : '#fff',
+                    color: showTempExplain ? '#fff' : '#6b7280',
+                    cursor: 'pointer', fontSize: 11, lineHeight: '16px',
+                    padding: 0, fontWeight: 700,
+                  }}
+                >ⓘ</button>
               </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Temp max (°C)</label>
-                <input
-                  type="number"
-                  value={form.temp_max}
-                  onChange={e => { set('temp_max', e.target.value); setTempUserEdited(true) }}
-                  min={-40} max={50}
-                />
+
+              {showTempExplain && (() => {
+                const ex = explainTempRange(form.category, form.subcategory, form.material)
+                const baseMsg = {
+                  exact_match:       `${ex.base.label} → preset`,
+                  cross_category:    `no preset for "${form.category} · ${form.subcategory}". Reused match from ${ex.base.label}`,
+                  category_fallback: `no preset for "${form.subcategory || '∅'}". Falling back to ${form.category} category default`,
+                  global_fallback:   `no recognised category. Using global default`,
+                }[ex.base.how]
+                return (
+                  <div style={{
+                    border: '1px solid #d1d5db', background: '#f9fafb', borderRadius: 8,
+                    padding: 12, marginBottom: 10, fontSize: 12, color: '#374151',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <strong style={{ fontSize: 13 }}>How we picked this range</strong>
+                      <button type="button" onClick={() => setShowTempExplain(false)}
+                              style={{ border: 'none', background: 'transparent', cursor: 'pointer',
+                                       color: '#6b7280', fontSize: 14, lineHeight: 1, padding: 0 }}>
+                        ×
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 8 }}>
+                      <div>
+                        <strong>1. Base range:</strong>{' '}
+                        <code>{ex.base.min}°C / {ex.base.max}°C</code>
+                      </div>
+                      <div style={{ marginLeft: 16, color: '#6b7280' }}>{baseMsg}</div>
+
+                      <div style={{ marginTop: 6 }}>
+                        <strong>2. Material modifier:</strong>{' '}
+                        {ex.material ? (
+                          <>
+                            <code>{ex.material.name}</code>
+                            {' shifts min by '}
+                            <code>{ex.material.minDelta >= 0 ? '+' : ''}{ex.material.minDelta}°C</code>
+                            {', max by '}
+                            <code>{ex.material.maxDelta >= 0 ? '+' : ''}{ex.material.maxDelta}°C</code>
+                          </>
+                        ) : (
+                          <span style={{ color: '#6b7280' }}>none (no material selected, or material has no temperature impact)</span>
+                        )}
+                      </div>
+
+                      <div style={{
+                        marginTop: 8, paddingTop: 6, borderTop: '1px dashed #d1d5db',
+                      }}>
+                        <strong>3. Final range:</strong>{' '}
+                        <code style={{ background: '#dbeafe', padding: '1px 6px', borderRadius: 4 }}>
+                          {ex.final[0]}°C to {ex.final[1]}°C
+                        </code>
+                        {ex.clamped && (
+                          <div style={{ marginLeft: 16, color: '#92400e' }}>
+                            (clamped to allowed bounds [{TEMP_BOUND_MIN}°, {TEMP_BOUND_MAX}°])
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              <div className="grid grid-2" style={{ gap: 12 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Temp min (°C)</label>
+                  <input
+                    type="number"
+                    value={form.temp_min}
+                    onChange={e => { set('temp_min', e.target.value); setTempUserEdited(true) }}
+                    min={-40} max={40}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Temp max (°C)</label>
+                  <input
+                    type="number"
+                    value={form.temp_max}
+                    onChange={e => { set('temp_max', e.target.value); setTempUserEdited(true) }}
+                    min={-40} max={50}
+                  />
+                </div>
               </div>
             </div>
             <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
