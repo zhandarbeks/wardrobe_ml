@@ -139,12 +139,30 @@ class User(Base):
     latitude      = Column(Float, nullable=True)
     longitude     = Column(Float, nullable=True)
     avatar_url    = Column(Text, nullable=True)
+    email_verified_at = Column(DateTime(timezone=True), nullable=True)
     created_at    = Column(DateTime(timezone=True), server_default=func.now())
 
     items       = relationship("WardrobeItem", back_populates="user", cascade="all, delete-orphan")
     outfits     = relationship("Outfit",       back_populates="user", cascade="all, delete-orphan")
     preferences = relationship("Preference",   back_populates="user", uselist=False, cascade="all, delete-orphan")
     ml_logs     = relationship("MLLog",        back_populates="user", cascade="all, delete-orphan")
+    email_tokens = relationship("EmailVerificationToken", back_populates="user",
+                                cascade="all, delete-orphan")
+
+
+class EmailVerificationToken(Base):
+    """One-shot token sent by email for verifying ownership.
+    Created on /register and on /resend-verification. Consumed by /verify-email."""
+    __tablename__ = "email_verification_tokens"
+    token       = Column(String(64), primary_key=True)
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    purpose     = Column(String(32), default="verification", nullable=False)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at  = Column(DateTime(timezone=True), nullable=False)
+    used_at     = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="email_tokens")
 
 
 class WardrobeItem(Base):

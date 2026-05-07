@@ -249,19 +249,25 @@ export default function Dashboard() {
   const searchTimer = useRef(null)
   const navigate    = useNavigate()
 
+  const [me, setMe] = useState(null)
+  const [resendingVerify, setResendingVerify] = useState(false)
+  const [verifyResendMsg, setVerifyResendMsg] = useState('')
+
   const load = async () => {
     setLoading(true)
     setSaved(false)
     try {
-      const [wRes, oRes, sRes] = await Promise.all([
+      const [wRes, oRes, sRes, mRes] = await Promise.all([
         api.get('/api/v1/weather/current'),
         api.get('/api/v1/outfits/recommend'),
         api.get('/api/v1/wardrobe/stats').catch(() => ({ data: null })),
+        api.get('/api/v1/auth/me').catch(() => ({ data: null })),
       ])
       setStats(sRes.data)
       setWeather(wRes.data)
       setOutfits(oRes.data.outfits || [])
       setOutfitIdx(0)
+      setMe(mRes.data)
     } catch (e) {
       console.error(e)
     } finally {
@@ -270,6 +276,22 @@ export default function Dashboard() {
   }
 
   useEffect(() => { load() }, [])
+
+  const resendVerification = async () => {
+    if (resendingVerify) return
+    setResendingVerify(true)
+    setVerifyResendMsg('')
+    try {
+      const r = await api.post('/api/v1/auth/resend-verification')
+      setVerifyResendMsg(r.data?.dev_verification_link
+        ? `Sent. Dev link: ${r.data.dev_verification_link}`
+        : 'Verification email sent. Check your inbox.')
+    } catch (err) {
+      setVerifyResendMsg(err?.response?.data?.detail || 'Could not resend — try again later.')
+    } finally {
+      setResendingVerify(false)
+    }
+  }
 
   const regenerate = async () => {
     setRegenerating(true)
@@ -366,6 +388,34 @@ export default function Dashboard() {
 
   return (
     <div className="page">
+      {me && me.email_verified === false && (
+        <div style={{
+          background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 8,
+          padding: '10px 14px', marginBottom: 16,
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          fontSize: 13, color: '#78350f',
+        }}>
+          <span style={{ fontSize: 18 }}>✉️</span>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <strong>Verify your email</strong> — we sent a confirmation link to{' '}
+            <code style={{ background: '#fff8e1', padding: '1px 6px', borderRadius: 4 }}>{me.email}</code>.
+            {verifyResendMsg && (
+              <div style={{ marginTop: 4, fontSize: 12, color: '#92400e' }}>{verifyResendMsg}</div>
+            )}
+          </div>
+          <button
+            onClick={resendVerification}
+            disabled={resendingVerify}
+            style={{
+              background: '#f59e0b', color: '#fff', border: 'none',
+              padding: '6px 12px', borderRadius: 6, fontWeight: 600,
+              fontSize: 12, cursor: resendingVerify ? 'wait' : 'pointer',
+            }}
+          >
+            {resendingVerify ? 'Sending…' : 'Resend email'}
+          </button>
+        </div>
+      )}
       <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 340px) 1fr', gap: 24, alignItems: 'start' }}>
 
         {/* ── LEFT COLUMN ─────────────────────────────────────── */}

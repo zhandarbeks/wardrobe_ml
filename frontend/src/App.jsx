@@ -11,6 +11,7 @@ import History from './pages/History'
 import Stats from './pages/Stats'
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'
+import VerifyEmail from './pages/VerifyEmail'
 
 function PrivateRoute({ children }) {
   return localStorage.getItem('token') ? children : <Navigate to="/login" replace />
@@ -29,8 +30,9 @@ export default function App() {
     <BrowserRouter>
       {loggedIn && <Nav />}
       <Routes>
-        <Route path="/login"      element={<Login />} />
-        <Route path="/register"   element={<Register />} />
+        <Route path="/login"        element={<Login />} />
+        <Route path="/register"     element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/onboarding" element={<PrivateRoute><Onboarding /></PrivateRoute>} />
         <Route path="/"           element={<PrivateRoute><Dashboard /></PrivateRoute>} />
         <Route path="/wardrobe"   element={<PrivateRoute><Wardrobe /></PrivateRoute>} />

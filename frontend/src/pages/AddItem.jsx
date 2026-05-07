@@ -415,7 +415,7 @@ export default function AddItem() {
 
           {analyzing && (
             <div className="alert alert-info mt-8">
-              Analysing with AI — background removal + EfficientNetB0 classification
+              Analysing — SegFormer segmentation + EfficientNetB2 classification
             </div>
           )}
 

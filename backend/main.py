@@ -10,8 +10,24 @@ from database import engine, Base
 import models  # noqa: F401 — registers all ORM classes before create_all
 
 from routers import auth, wardrobe, outfits, weather, profile, admin
+from sqlalchemy import text
 
 Base.metadata.create_all(bind=engine)
+
+# Lightweight idempotent migrations — runs every startup, only does work the
+# first time. We do this instead of pulling in Alembic for a small project.
+def _run_migrations():
+    statements = [
+        # Email verification — added in v3.1
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP WITH TIME ZONE",
+    ]
+    with engine.begin() as conn:
+        for sql in statements:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                print(f"[migrations] '{sql}' skipped: {e}")
+_run_migrations()
 
 # Seed lookup tables (categories, colours, materials, styles) on first run
 from seed import seed as _seed
