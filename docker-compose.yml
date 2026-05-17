@@ -27,17 +27,14 @@ services:
       SECRET_KEY: change-me-in-production-32chars
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
       ML_SERVICE_URL: http://ml-service:8001
-      # Email verification
       EMAIL_BACKEND:    ${EMAIL_BACKEND:-console}
       FRONTEND_URL:     ${FRONTEND_URL:-http://localhost:3000}
       EMAIL_FROM:       ${EMAIL_FROM:-no-reply@wardrobe.local}
       EMAIL_FROM_NAME:  ${EMAIL_FROM_NAME:-WarDrobe AI}
-      # SMTP (Gmail / any provider) — only used if EMAIL_BACKEND=smtp
       SMTP_HOST:        ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT:        ${SMTP_PORT:-587}
       SMTP_USER:        ${SMTP_USER:-}
       SMTP_PASS:        ${SMTP_PASS:-}
-      # SendGrid — only used if EMAIL_BACKEND=sendgrid
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
     volumes:
       - uploads:/app/uploads
@@ -50,6 +47,8 @@ services:
     restart: unless-stopped
     ports:
       - "8001:8001"
+    environment:
+      SEGFORMER_ENABLED: ${SEGFORMER_ENABLED:-1}
     volumes:
       - uploads:/app/uploads
       - ./ml-service/models:/app/models:ro

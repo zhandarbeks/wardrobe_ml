@@ -3,7 +3,7 @@ import api from '../api'
 
 const CAT_ORDER = { outer: 0, top: 1, mid: 2, bottom: 3, footwear: 4, accessory: 5 }
 
-// ── small image with fallback ─────────────────────────────────────────────────
+// small image with fallback
 function Thumb({ item, size = 56 }) {
   const [src, setSrc] = useState(item.image_no_bg_url || item.image_url || null)
   const fallback = item.image_no_bg_url ? item.image_url : null
@@ -26,7 +26,7 @@ function Thumb({ item, size = 56 }) {
   )
 }
 
-// ── outfit builder / editor modal ────────────────────────────────────────────
+// outfit builder / editor modal
 function OutfitModal({ outfit, onClose, onSaved }) {
   const [wardrobeItems, setWardrobeItems] = useState([])
   const [selected, setSelected]           = useState(
@@ -207,7 +207,7 @@ function OutfitModal({ outfit, onClose, onSaved }) {
   )
 }
 
-// ── outfit card ───────────────────────────────────────────────────────────────
+// outfit card
 function OutfitCard({ outfit, onEdit, onDelete, onWorn }) {
   const [wornToday, setWornToday] = useState(
     outfit.used_at
@@ -256,7 +256,7 @@ function OutfitCard({ outfit, onEdit, onDelete, onWorn }) {
 
       {/* tags */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-        <span className="tag">{outfit.is_auto_generated ? '🤖 Auto' : '✋ Manual'}</span>
+        <span className="tag">{outfit.is_auto_generated ? 'Auto' : 'Manual'}</span>
         {outfit.score != null && <span className="tag">Score {outfit.score.toFixed(2)}</span>}
         {outfit.weather_temp != null && <span className="tag">{outfit.weather_temp}°C</span>}
         <span className="tag">{outfit.items.length} items</span>
@@ -289,7 +289,7 @@ function OutfitCard({ outfit, onEdit, onDelete, onWorn }) {
   )
 }
 
-// ── page ──────────────────────────────────────────────────────────────────────
+// page
 export default function Outfits() {
   const [outfits, setOutfits]   = useState([])
   const [loading, setLoading]   = useState(true)

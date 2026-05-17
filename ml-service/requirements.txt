@@ -3,7 +3,9 @@ uvicorn==0.24.0
 python-multipart==0.0.6
 pillow
 numpy
+scipy
 scikit-learn==1.6.1
+rembg==2.0.59
 joblib
 tensorflow>=2.16,<2.21
 # SegFormer-B2 ATR clothes parser for garment-only segmentation at inference.

@@ -24,7 +24,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 ML_URL = os.getenv("ML_SERVICE_URL", "http://ml-service:8001")
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# helpers
 
 def _get_or_create(db: Session, model, name: str):
     """Find a lookup row by name, create it if absent."""
@@ -82,7 +82,7 @@ def _load_items(db: Session, user_id, category: str = None):
     return q.order_by(WardrobeItem.created_at.desc()).all()
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
+# endpoints
 
 @router.get("/stats")
 def wardrobe_stats(
@@ -103,7 +103,7 @@ def wardrobe_stats(
         by_color[col]    = by_color.get(col, 0) + 1
         by_season[sea]   = by_season.get(sea, 0) + 1
 
-    # wear counts: distinct WORN outfits each item appears in
+    # wear counts
     rows = (
         db.query(OutfitItem.item_id, func.count(distinct(Outfit.id)))
         .join(Outfit, OutfitItem.outfit_id == Outfit.id)
@@ -128,7 +128,7 @@ def wardrobe_stats(
             "color":           i.colour_ref.name   if i.colour_ref   else "",
         }
 
-    # most worn — top 5 with wear_count > 0
+    # most worn
     ranked = sorted(items, key=lambda i: wear_counts.get(i.id, 0), reverse=True)
     most_worn = [
         {**thumb(i), "wear_count": wear_counts.get(i.id, 0),
@@ -136,7 +136,7 @@ def wardrobe_stats(
         for i in ranked if wear_counts.get(i.id, 0) > 0
     ][:5]
 
-    # longest unworn — never_worn first (by oldest created_at), then oldest last_worn_at
+    # longest unworn
     now = datetime.now(timezone.utc)
     def days_since(dt):
         if dt is None: return None
@@ -268,9 +268,7 @@ class ItemCreate(BaseModel):
     color:          str
     material:       Optional[str]   = None
     brand:          Optional[str]   = None
-    styles:         Optional[str]   = None   # comma-separated
-    # When None, the server auto-derives a sensible range from
-    # (category, subcategory, material) via temp_defaults.derive_temp_range.
+    styles:         Optional[str]   = None
     temp_min:       Optional[int]   = None
     temp_max:       Optional[int]   = None
     image_url:      Optional[str]   = None
@@ -289,9 +287,6 @@ def create_item(
     col  = _get_or_create(db, Colour,   body.color)
     mat  = _get_or_create(db, Material, body.material) if body.material else None
 
-    # If the client didn't supply both temp bounds, auto-derive them from
-    # (category, subcategory, material). We still respect partial input —
-    # a user-set min combined with an auto-derived max stays valid.
     if body.temp_min is None or body.temp_max is None:
         auto_min, auto_max = derive_temp_range(
             body.category, body.subcategory, body.material,
@@ -320,10 +315,6 @@ def create_item(
     db.add(item)
     db.flush()
 
-    # Determine which styles to attach.
-    # If the client passed a non-empty `styles` string we treat it as
-    # explicit user choice (including the empty case "" — user wants none).
-    # Only auto-derive when the field was omitted entirely (None).
     if body.styles is None:
         style_names = derive_styles(body.category, body.subcategory, body.material)
     else:

@@ -1,4 +1,3 @@
-"""Populate lookup tables on first startup (idempotent)."""
 from database import SessionLocal
 from models import Category, Colour, Material, Style
 

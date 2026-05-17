@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
+import CropModal from '../components/CropModal'
 
 const CATEGORIES = ['top', 'mid', 'outer', 'bottom', 'footwear', 'accessory']
 const CATEGORY_LABEL = {
@@ -12,10 +13,6 @@ const CATEGORY_LABEL = {
   accessory: 'Accessory',
 }
 
-// Subcategory options — superset of (a) Model A predicted classes and
-// (b) common wardrobe items users add manually. Keeping the union here lets
-// the UI show every label that backend's temp_defaults / style_defaults
-// recognise.
 const SUBCATEGORY_OPTIONS = {
   top:       ['t-shirt', 'shirt', 'top', 'polo', 'tank top', 'blouse', 'tunic'],
   mid:       ['sweater', 'sweatshirt', 'pullover', 'hoodie'],
@@ -40,8 +37,6 @@ const MATERIALS = [
 
 const STYLES = ['casual', 'smart casual', 'business', 'sport', 'streetwear', 'formal']
 
-// ── Temperature defaults — mirror of backend/temp_defaults.py for instant UI feedback.
-//     Backend remains the source of truth; we just avoid an API round-trip on every keystroke.
 const TEMP_BASE_RANGES = {
   'top|t-shirt':       [15,  35],
   'top|tank top':      [20,  40],
@@ -106,9 +101,6 @@ function deriveTempRange(category, subcategory, material) {
   return r.final
 }
 
-// ── Explanation builder for the "Why these numbers?" popover ─────────────
-// Returns the same final range as deriveTempRange, but also exposes the
-// reasoning steps so the UI can render a transparent breakdown.
 function explainTempRange(category, subcategory, material) {
   const cat = (category    || '').toLowerCase().trim()
   const sub = (subcategory || '').toLowerCase().trim()
@@ -124,7 +116,7 @@ function explainTempRange(category, subcategory, material) {
       if (key.endsWith(`|${sub}`)) {
         base = TEMP_BASE_RANGES[key]
         baseHow = 'cross_category'
-        baseFromKey = key                  // e.g. "mid|hoodie" when user picked "top|hoodie"
+        baseFromKey = key
         baseLabel = key.replace('|', ' · ')
         break
       }
@@ -162,7 +154,6 @@ function explainTempRange(category, subcategory, material) {
   }
 }
 
-// ── Style suggestion mirror — backend/style_defaults.py ──────────────────
 const STYLE_BY_SUBCAT = {
   'top|t-shirt':    ['casual', 'streetwear'],
   'top|tank top':   ['casual', 'sport'],
@@ -263,17 +254,13 @@ export default function AddItem() {
   })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
-  const [tempUserEdited, setTempUserEdited] = useState(false)   // true once user types in temp_min/max
-  const [showTempExplain, setShowTempExplain] = useState(false) // toggles the "Why these numbers?" popover
-  const [styleUserEdited, setStyleUserEdited] = useState(false) // true once user toggles a style chip
+  const [tempUserEdited, setTempUserEdited] = useState(false)
+  const [showTempExplain, setShowTempExplain] = useState(false)
+  const [styleUserEdited, setStyleUserEdited] = useState(false)
   const [autoStyles,     setAutoStyles]      = useState([])
+  const [pendingFile,    setPendingFile]     = useState(null)
   const navigate = useNavigate()
 
-  // ── Auto-derive temp range from category / subcategory / material ──────────
-  // Runs whenever any of those three change, but ONLY while the user hasn't
-  // manually edited the temperature inputs. Once they touch min or max, we
-  // back off and respect their values — they can re-enable auto via the reset
-  // link below the inputs.
   const [autoSuggested, setAutoSuggested] = useState(deriveTempRange('top', '', ''))
   useEffect(() => {
     const [tmin, tmax] = deriveTempRange(form.category, form.subcategory, form.material)
@@ -283,9 +270,6 @@ export default function AddItem() {
     }
   }, [form.category, form.subcategory, form.material, tempUserEdited])
 
-  // ── Auto-derive style tags ────────────────────────────────────────────
-  // Same pattern as temp range: until the user toggles any style chip we
-  // mirror the derived list into form.styles. Once they edit, we back off.
   useEffect(() => {
     const suggested = deriveStyles(form.category, form.subcategory, form.material)
     setAutoStyles(suggested)
@@ -294,16 +278,23 @@ export default function AddItem() {
     }
   }, [form.category, form.subcategory, form.material, styleUserEdited])
 
-  const onFileChange = async e => {
+  const onFileChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setPreview(URL.createObjectURL(file))
+    setPendingFile(file)
+    e.target.value = ''
+  }
+
+  const onCropConfirm = async (blob) => {
+    setPendingFile(null)
+    if (!blob) return
+    setPreview(URL.createObjectURL(blob))
     setError('')
     setMlResult(null)
     setAnalyzing(true)
 
     const fd = new FormData()
-    fd.append('file', file)
+    fd.append('file', blob, 'cropped.jpg')
     try {
       const { data } = await api.post('/api/v1/wardrobe/analyze', fd)
       setMlResult(data)
@@ -400,6 +391,15 @@ export default function AddItem() {
             )}
           </div>
 
+          <div style={{
+            fontSize: 12, color: '#555', background: '#fff8e1',
+            border: '1px solid #ffe49a', borderRadius: 6,
+            padding: '8px 10px', marginBottom: 8,
+          }}>
+            💡 Tip: photograph the item <strong>laid flat or on a hanger</strong> - not while wearing it.
+            Then crop tightly to the single garment for best recognition.
+          </div>
+
           <label
             className="btn btn-secondary"
             style={{ display: 'block', textAlign: 'center', width: '100%', cursor: 'pointer' }}
@@ -413,15 +413,21 @@ export default function AddItem() {
             />
           </label>
 
+          <CropModal
+            file={pendingFile}
+            onCancel={() => setPendingFile(null)}
+            onConfirm={onCropConfirm}
+          />
+
           {analyzing && (
             <div className="alert alert-info mt-8">
-              Analysing — SegFormer segmentation + EfficientNetB2 classification
+              Analysing — background removal + EfficientNetB2 classification
             </div>
           )}
 
           {mlResult && !analyzing && (
             <div className={`alert mt-8 ${lowConf ? 'alert-error' : 'alert-success'}`}>
-              {lowConf ? '⚠️' : '✅'} ML complete — confidence: {(mlResult.confidence * 100).toFixed(0)}%
+              {lowConf ? ' ' : ' '} ML complete — confidence: {(mlResult.confidence * 100).toFixed(0)}%
               {lowConf && ' — low confidence, please verify the fields below'}
             </div>
           )}

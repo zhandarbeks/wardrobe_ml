@@ -79,7 +79,7 @@ async def recommend(
 
 class OutfitBody(BaseModel):
     name:             Optional[str]   = None
-    item_ids:         str                     # comma-separated UUID strings
+    item_ids:         str
     is_auto_generated: bool           = True
     score:            Optional[float] = None
     weather_temp:     Optional[float] = None
@@ -123,7 +123,7 @@ def save_outfit(
         except ValueError:
             layer = Layer.top
         if layer in used_layers:
-            continue  # enforce UNIQUE(outfit_id, layer)
+            continue
         used_layers.add(layer)
         db.add(OutfitItem(outfit_id=outfit.id, item_id=item_uuid, layer=layer))
 
@@ -177,7 +177,7 @@ def list_outfits(
 
 class OutfitUpdate(BaseModel):
     name:     Optional[str] = None
-    item_ids: Optional[str] = None   # comma-separated; replaces all items if provided
+    item_ids: Optional[str] = None
 
 
 @router.patch("/{oid}")
@@ -254,7 +254,6 @@ def mark_worn(
     now = datetime.utcnow()
     o.used_at = now
 
-    # Also update last_worn_at on every item in the outfit
     for oi in o.outfit_items:
         if oi.item:
             oi.item.last_worn_at = now

@@ -11,8 +11,6 @@ from sqlalchemy.sql import func
 from database import Base
 
 
-# ── Enums ────────────────────────────────────────────────────────────────────
-
 class UserRole(str, enum.Enum):
     user = "user"
     admin = "admin"
@@ -40,8 +38,6 @@ class Occasion(str, enum.Enum):
     outdoor   = "outdoor"
     any       = "any"
 
-
-# ── Lookup / Reference tables ────────────────────────────────────────────────
 
 class Category(Base):
     __tablename__ = "categories"
@@ -72,8 +68,6 @@ class Style(Base):
     id   = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), unique=True, nullable=False)
 
-
-# ── Junction tables ──────────────────────────────────────────────────────────
 
 class WardrobeItemStyle(Base):
     __tablename__ = "wardrobe_item_styles"
@@ -125,8 +119,6 @@ class PreferenceDislikedColour(Base):
     color_id = Column(Integer, ForeignKey("colours.id", ondelete="CASCADE"), primary_key=True)
 
 
-# ── Core tables ──────────────────────────────────────────────────────────────
-
 class User(Base):
     __tablename__ = "users"
     id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -151,8 +143,6 @@ class User(Base):
 
 
 class EmailVerificationToken(Base):
-    """One-shot token sent by email for verifying ownership.
-    Created on /register and on /resend-verification. Consumed by /verify-email."""
     __tablename__ = "email_verification_tokens"
     token       = Column(String(64), primary_key=True)
     user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
@@ -174,7 +164,6 @@ class WardrobeItem(Base):
     color_id      = Column(Integer, ForeignKey("colours.id"),    nullable=False)
     material_id   = Column(Integer, ForeignKey("materials.id"),  nullable=True)
     brand         = Column(String(100), nullable=True)
-    # subcategory kept as plain string for app logic (e.g. "shorts", "sandal")
     subcategory   = Column(String(100), nullable=True)
     temp_min      = Column(SmallInteger, default=-30, nullable=False)
     temp_max      = Column(SmallInteger, default=40,  nullable=False)

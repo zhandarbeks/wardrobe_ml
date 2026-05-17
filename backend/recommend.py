@@ -47,11 +47,6 @@ def _item_styles(item: WardrobeItem) -> set:
     return {s.name.lower() for s in (item.styles or [])}
 
 
-# ── Final-score blender ──────────────────────────────────────────────────────
-# Final score = weighted average of breakdown components, each in [0, 1].
-# When ML compatibility is available we blend it in at moderate weight; we
-# don't let ML *replace* the rule-based score because Model B trained on a
-# small pair set is sometimes confidently wrong on real-world inputs.
 SCORE_WEIGHTS_NO_ML = {
     "color_harmony": 0.50,
     "style_match":   0.20,
@@ -66,22 +61,12 @@ SCORE_WEIGHTS_WITH_ML = {
 
 
 def _blend_final(bd: dict) -> float:
-    """Compose `score_breakdown` components into a final [0, 1] score.
-    Uses ML weights when ml_compat is present, otherwise no-ML weights.
-    Missing components are treated as 0 — but that only happens for
-    weather_fit which is always set during recommend_outfits."""
     weights = SCORE_WEIGHTS_WITH_ML if bd.get("ml_compat") is not None else SCORE_WEIGHTS_NO_ML
     score = sum(weights[k] * float(bd.get(k, 0.0)) for k in weights)
     return round(max(0.0, min(1.0, score)), 3)
 
 
 def score_outfit(items: List[WardrobeItem], prefs: Optional[Preference]):
-    """Return (final_score, breakdown_dict).
-
-    Final score is the historical raw value (0.6 * color_avg + 0.4 * style_score).
-    Breakdown exposes the components so the UI can show "why this score".
-    All breakdown values are normalised to [0, 1] for human-friendly display.
-    """
     colors = [_item_color(i) for i in items if _item_color(i)]
     pairs  = list(itertools.combinations(colors, 2))
     color_avg = sum(_hue_score(a, b) for a, b in pairs) / len(pairs) if pairs else 0.0
@@ -105,9 +90,7 @@ def score_outfit(items: List[WardrobeItem], prefs: Optional[Preference]):
 
     final = round(0.6 * color_avg + 0.4 * style_score, 3)
 
-    # Itten harmony scores live in [-1, 3]; map to [0, 1] for display.
     color_norm = max(0.0, min(1.0, (color_avg + 1.0) / 4.0))
-    # style_score has no fixed cap — clamp display to [0, 1] over a sensible range.
     style_norm = max(0.0, min(1.0, style_score / 3.0))
 
     breakdown = {
@@ -124,11 +107,6 @@ def score_outfit(items: List[WardrobeItem], prefs: Optional[Preference]):
     return final, breakdown
 
 
-#  ── Subcategory-based safety net ────────────────────────────────────────────
-#  Catches items whose stored category/temp_range is wrong (e.g. a hoodie
-#  classified as "top" by Model A would otherwise sneak into hot-weather
-#  outfits). Subcategory names below are the single strongest temperature
-#  signals on the garment.
 WARM_SUBCATEGORIES = {
     "sweater", "sweatshirt", "pullover", "hoodie",
     "jacket",  "blazer",     "coat",     "rain jacket",
@@ -139,9 +117,7 @@ COOL_SUBCATEGORIES = {
     "sandals",  "flip flops",
 }
 
-# Accessories grouped by visible "kind" — we pick at most one per kind so the
-# recommended outfit doesn't end up wearing two backpacks or three watches.
-# Subcategories not in this map are treated as their own kind.
+
 ACCESSORY_KINDS = {
     "watch":      "jewelry",
     "sunglasses": "eyewear",
@@ -155,15 +131,10 @@ ACCESSORY_KINDS = {
     "hat":        "headwear",
     "cap":        "headwear",
 }
-# Items that exist in users' wardrobes but rarely belong on an outfit board —
-# we deprioritise them when auto-attaching accessories.
 ACCESSORY_LOW_PRIORITY = {"wallet"}
 
 
 def _safe(item, t: float, pop: float, category: str) -> bool:
-    """Soft safety net — rejects items whose subcategory makes them obviously
-    inappropriate for the current weather. NOT absolute: at Tier 3 of
-    `_eligible_pool` we relax this so sparse wardrobes still get a result."""
     sub = (item.subcategory or "").lower().strip()
     if t > 22 and sub in WARM_SUBCATEGORIES:
         return False
@@ -177,13 +148,11 @@ def _safe(item, t: float, pop: float, category: str) -> bool:
     return True
 
 
-# Backwards-compat alias for any external callers
 def _subcategory_appropriate(item, t: float) -> bool:
     return _safe(item, t, pop=0.0, category=_item_category(item))
 
 
 def _closeness(item, t: float) -> float:
-    """0 if t is inside [temp_min, temp_max], otherwise positive distance."""
     if item.temp_min <= t <= item.temp_max:
         return 0.0
     if t < item.temp_min:
@@ -192,8 +161,6 @@ def _closeness(item, t: float) -> float:
 
 
 def _pick_accessories(pool, max_n: int = 2):
-    """Return up to `max_n` accessory items from `pool`, each from a different
-    visible kind. Wallets and other low-priority items are picked last."""
     if not pool:
         return []
     high = [i for i in pool if (i.subcategory or "").lower() not in ACCESSORY_LOW_PRIORITY]
@@ -217,29 +184,20 @@ def _pick_accessories(pool, max_n: int = 2):
 
 
 def _eligible_pool(items, category: str, t: float, pop: float, max_fallback: int = 5):
-    """Items of `category` that suit temperature `t`.
-
-    Three-tier fallback so users with sparse wardrobes still get suggestions:
-      Tier 1 — _safe items whose stored temp_range covers t (ideal).
-      Tier 2 — _safe items closest to t (slightly out of range).
-      Tier 3 — ANY item in the category closest to t. Last resort — better to
-               recommend a t-shirt at cold weather than to show an empty
-               dashboard. The user can override anyway.
-    """
     cat_items = [i for i in items if _item_category(i) == category]
     safe = [i for i in cat_items if _safe(i, t, pop, category)]
 
-    # Tier 1
+    # tier 1
     in_range_safe = [i for i in safe if i.temp_min <= t <= i.temp_max]
     if in_range_safe:
         return in_range_safe
 
-    # Tier 2
+    # tier 2
     if safe:
         safe.sort(key=lambda i: _closeness(i, t))
         return safe[:max_fallback]
 
-    # Tier 3 — sparse wardrobe; relax safety net entirely
+    # tier 3
     cat_items.sort(key=lambda i: _closeness(i, t))
     return cat_items[:max_fallback]
 
@@ -281,12 +239,9 @@ def recommend_outfits(
         if shoe:  outfit.append(shoe)
         if mid_pool:   outfit.append(random.choice(mid_pool))
         if outer_pool: outfit.append(random.choice(outer_pool))
-        # Accessories: up to 2 items of distinct kinds (e.g. bag + watch).
-        # Picked per-combo so different outfit options surface different accessories.
         outfit.extend(_pick_accessories(accessory_pool, max_n=2))
         rule_sc, bd = score_outfit(outfit, prefs)
 
-        # Weather component: fraction of outfit's items whose temp range covers t
         covered = sum(1 for i in outfit if i.temp_min <= t <= i.temp_max)
         bd["weather_fit"] = round(covered / max(1, len(outfit)), 3)
         bd["t_target"]    = round(t, 1)
@@ -295,7 +250,6 @@ def recommend_outfits(
         final = _blend_final(bd)
         combos.append((outfit, final, bd))
 
-    # Sort by the blended final score so outfits with bad weather fit don't win
     combos.sort(key=lambda x: x[1], reverse=True)
 
     seen, results = set(), []
@@ -328,7 +282,6 @@ def recommend_outfits(
 
 
 async def ml_rescore_outfits(outfits: list, ml_url: str) -> list:
-    """Re-score outfit list using ModelB pairwise compatibility."""
     import httpx
 
     def _decode(emb_str) -> Optional[list]:
@@ -364,10 +317,6 @@ async def ml_rescore_outfits(outfits: list, ml_url: str) -> list:
                     bd = outfit.setdefault("score_breakdown", {})
                     bd["ml_compat"] = round(ml_avg, 3)
                     bd["ml_pairs"]  = len(scores)
-                    # Re-blend with ML as one weighted component instead of replacing.
-                    # Model B trained on small data can be confidently wrong on real-world
-                    # inputs; capping its weight at ~0.25 keeps a bad ML score from sinking
-                    # an otherwise good outfit, but still rewards genuinely compatible pairs.
                     outfit["score"] = _blend_final(bd)
     except Exception:
         pass

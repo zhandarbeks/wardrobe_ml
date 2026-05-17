@@ -18,9 +18,6 @@ const COLOR_HEX = {
   beige: '#e8dcc8', brown: '#8b4513', camel: '#c19a6b',
 }
 
-// Hover-card: human-readable breakdown of an outfit's score.
-// Backend returns score_breakdown with values normalised to [0, 1].
-// Weights mirror SCORE_WEIGHTS_* in backend/recommend.py.
 const SCORE_WEIGHTS_NO_ML   = { color_harmony: 0.50, style_match: 0.20, weather_fit: 0.30 }
 const SCORE_WEIGHTS_WITH_ML = { color_harmony: 0.35, style_match: 0.15, weather_fit: 0.25, ml_compat: 0.25 }
 
@@ -155,7 +152,6 @@ function ScoreBreakdownTooltip({ bd, score }) {
   )
 }
 
-// Collage grid: top-layer items side by side, bottom full-width, footwear+accessory small row
 function OutfitCollage({ items }) {
   const sorted = [...items].sort((a, b) => (CAT_ORDER[a.category] ?? 9) - (CAT_ORDER[b.category] ?? 9))
 
@@ -397,7 +393,7 @@ export default function Dashboard() {
         }}>
           <span style={{ fontSize: 18 }}>✉️</span>
           <div style={{ flex: 1, minWidth: 200 }}>
-            <strong>Verify your email</strong> — we sent a confirmation link to{' '}
+            <strong>Verify your email</strong> - we sent a confirmation link to{' '}
             <code style={{ background: '#fff8e1', padding: '1px 6px', borderRadius: 4 }}>{me.email}</code>.
             {verifyResendMsg && (
               <div style={{ marginTop: 4, fontSize: 12, color: '#92400e' }}>{verifyResendMsg}</div>
@@ -527,7 +523,7 @@ export default function Dashboard() {
             <button className="btn btn-primary" onClick={() => navigate('/add')}>+ Add Clothes</button>
             <button className="btn btn-secondary" onClick={() => navigate('/wardrobe')}>My Wardrobe</button>
             <button className="btn btn-secondary" onClick={() => navigate('/outfits')}>Saved Outfits</button>
-            <button className="btn btn-secondary" onClick={load}>🔄 Refresh</button>
+            <button className="btn btn-secondary" onClick={load}>Refresh</button>
           </div>
         </div>
 
@@ -618,7 +614,7 @@ export default function Dashboard() {
                   onClick={regenerate}
                   disabled={regenerating}
                 >
-                  {regenerating ? '⏳ Generating…' : '🔄 Regenerate'}
+                  {regenerating ? 'Generating…' : 'Regenerate'}
                 </button>
                 <button
                   className="btn btn-primary"
@@ -626,7 +622,7 @@ export default function Dashboard() {
                   onClick={saveOutfit}
                   disabled={saving || saved}
                 >
-                  {saved ? '✅ Saved!' : saving ? '…' : '💾 Save outfit'}
+                  {saved ? 'Saved!' : saving ? '…' : 'Save outfit'}
                 </button>
               </div>
             </div>

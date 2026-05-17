@@ -1,19 +1,3 @@
-"""Pluggable email-sending service.
-
-Backends are selected via the EMAIL_BACKEND env var:
-    console   — print the message to stdout (default; perfect for dev/diploma demo)
-    smtp      — send via Gmail/any SMTP using SMTP_HOST / SMTP_USER / SMTP_PASS
-    sendgrid  — send via SendGrid HTTP API using SENDGRID_API_KEY
-
-Other env vars used:
-    EMAIL_FROM       address shown in From: header (default "no-reply@wardrobe.local")
-    EMAIL_FROM_NAME  display name (default "WarDrobe AI")
-    FRONTEND_URL     base URL for verification links (default http://localhost:3000)
-
-Usage from elsewhere:
-    from email_service import send_verification_email
-    send_verification_email(user, token_string)
-"""
 import os
 import smtplib
 import textwrap
@@ -36,9 +20,6 @@ def _from_addr() -> tuple[str, str]:
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Backend implementations
-# ─────────────────────────────────────────────────────────────────────────────
 def _send_console(to: str, subject: str, text_body: str, html_body: Optional[str] = None):
     """Print everything to stdout. Verification link is highlighted so it's
     easy to copy-paste during local development."""
@@ -109,16 +90,12 @@ def _send(to: str, subject: str, text_body: str, html_body: Optional[str] = None
     try:
         fn(to, subject, text_body, html_body)
     except Exception as e:
-        # Never let an email failure break the API request — log and continue.
         print(f"[email_service] {backend} send failed: {e}")
         if backend != "console":
             print("[email_service] mirroring to console as a fallback so the link is recoverable:")
             _send_console(to, subject, text_body, html_body)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Public helpers — one function per email type
-# ─────────────────────────────────────────────────────────────────────────────
 def send_verification_email(user, token: str) -> str:
     """Compose & send the email-verification message.
     Returns the verification URL so the caller can return it in dev mode.

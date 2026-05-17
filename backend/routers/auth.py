@@ -23,8 +23,6 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 VERIFY_TOKEN_TTL_HOURS  = 24
 RESEND_RATE_WINDOW_MIN  = 30
 RESEND_RATE_MAX_TOKENS  = 3
-# In dev (EMAIL_BACKEND=console) we expose the verification URL in the API
-# response so a developer/tester doesn't have to read container logs to grab it.
 EXPOSE_DEV_LINK = (os.getenv("EMAIL_BACKEND", "console").lower() == "console")
 
 
@@ -81,8 +79,6 @@ def register(body: RegisterBody, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    # Send verification email. Failures here are logged but don't block registration —
-    # the user can resend from the dashboard if it doesn't arrive.
     dev_link: Optional[str] = None
     try:
         tok = _create_verification_token(db, user)
@@ -100,8 +96,6 @@ def register(body: RegisterBody, db: Session = Depends(get_db)):
         resp["dev_verification_link"] = dev_link
     return resp
 
-
-# ── Email verification ───────────────────────────────────────────────────────
 class VerifyEmailBody(BaseModel):
     token: str
 
@@ -141,7 +135,6 @@ def resend_verification(
     if current_user.email_verified_at is not None:
         raise HTTPException(400, "Email is already verified")
 
-    # Rate limit: cap recent verification tokens per user
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=RESEND_RATE_WINDOW_MIN)
     recent = db.query(EmailVerificationToken).filter(
         EmailVerificationToken.user_id == current_user.id,
@@ -222,8 +215,6 @@ def update_me(
     db.commit()
     db.refresh(current_user)
 
-    # invalidate cached weather for this user across both caches
-    # (Dashboard widget reads weather._cache; outfit recommend uses outfits._wcache)
     try:
         from routers.outfits import _wcache
         _wcache.pop(current_user.id, None)
@@ -251,7 +242,6 @@ def delete_me(
     if not verify_password(body.password, current_user.password_hash):
         raise HTTPException(400, "Password is incorrect")
 
-    # invalidate weather caches before delete (uid won't exist after)
     try:
         from routers.outfits import _wcache
         _wcache.pop(current_user.id, None)
@@ -283,7 +273,6 @@ def upload_avatar(
     with open(filepath, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # remove old avatar file (best-effort)
     if current_user.avatar_url and current_user.avatar_url.startswith("/uploads/"):
         old = UPLOAD_DIR / current_user.avatar_url.split("/", 2)[-1]
         try:

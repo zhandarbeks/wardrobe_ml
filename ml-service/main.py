@@ -20,6 +20,7 @@ Differences vs the legacy main.py:
 
 import io
 import json
+import os
 import pickle
 import uuid
 from pathlib import Path
@@ -47,6 +48,7 @@ SEG_SIZE = (256, 256)         # Attention U-Net input
 EMBEDDING_DIM = 128
 MASK_COVERAGE_LO = 0.02       # below this → mask probably failed
 MASK_COVERAGE_HI = 0.98       # above this → mask covers the entire frame
+SEGFORMER_ENABLED = os.getenv("SEGFORMER_ENABLED", "1") not in ("0", "false", "False", "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -202,6 +204,76 @@ def _get_segformer():
     return _segformer_proc, _segformer_model
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# rembg (u2netp) — primary inference-time segmenter.
+#
+# Generic background remover. Treats the whole salient object as foreground
+# regardless of class — so accessories, shoes, watches, bags all work, unlike
+# SegFormer which only knows specific clothing classes. Robust on cluttered /
+# coloured / textured backgrounds, unlike Model D which was distilled only on
+# studio-white photos.
+#
+# Weights (~5 MB for u2netp) are pre-downloaded into the image at build time.
+# ─────────────────────────────────────────────────────────────────────────────
+REMBG_MODEL = os.getenv("REMBG_MODEL", "u2netp")
+_rembg_session = None
+
+
+def _get_rembg():
+    """Lazy-load rembg session (one per process)."""
+    global _rembg_session
+    if _rembg_session is None:
+        from rembg import new_session
+        _rembg_session = new_session(REMBG_MODEL)
+    return _rembg_session
+
+
+def _rembg_clean(img: Image.Image):
+    """Run rembg on the original image. Returns a tuple:
+       (cleaned_image_on_white, mask_at_original_resolution_uint8)
+    The cleaned image looks like a studio photo (white background) — exactly the
+    distribution Model D was trained on, so it can be refined further."""
+    from rembg import remove
+    session = _get_rembg()
+    rgba = remove(img.convert("RGBA"), session=session)
+    alpha = np.array(rgba.split()[-1], dtype=np.uint8)         # (H, W) 0..255
+
+    rgb   = np.array(img.convert("RGB"), dtype=np.float32)
+    mnorm = (alpha.astype(np.float32) / 255.0)[:, :, None]
+    white = np.full_like(rgb, 255.0)
+    cleaned_arr = rgb * mnorm + white * (1.0 - mnorm)
+    cleaned_img = Image.fromarray(np.clip(cleaned_arr, 0, 255).astype(np.uint8))
+    return cleaned_img, alpha
+
+
+def _segment_rembg_then_d(img: Image.Image):
+    """Two-stage segmentation:
+       1. rembg removes the (possibly cluttered/coloured) background, producing
+          a studio-style image on a white canvas.
+       2. Model D — trained ONLY on white-background studio photos — runs on
+          that cleaned image and refines the mask, dropping any non-garment
+          fragments that rembg accidentally kept (shadows, person body parts,
+          stray objects).
+    Returns the final SEG_SIZE binary mask after _clean_mask post-processing."""
+    cleaned_img, _alpha_full = _rembg_clean(img)
+
+    # Model D refinement on the rembg-cleaned image
+    model_d = _get_model_d()
+    arr = np.array(cleaned_img.convert("RGB").resize(SEG_SIZE), dtype=np.float32) / 255.0
+    pred = model_d.predict(np.expand_dims(arr, 0), verbose=0)[0, :, :, 0]
+    raw = (pred > 0.5).astype(np.float32)
+    return _clean_mask(raw)
+
+
+def _segment_with_rembg_only(img: Image.Image) -> np.ndarray:
+    """Fallback: rembg alone, used if Model D refinement fails (e.g. weights
+    missing). Returns a SEG_SIZE binary mask."""
+    _cleaned, alpha = _rembg_clean(img)
+    mask_pil = Image.fromarray(alpha).resize(SEG_SIZE, Image.BILINEAR)
+    raw = (np.array(mask_pil, dtype=np.float32) / 255.0 > 0.5).astype(np.float32)
+    return _clean_mask(raw)
+
+
 def _get_scaler_b():
     global _scaler_b
     if _scaler_b is None:
@@ -248,7 +320,8 @@ def preload_models():
 
     def _load():
         try:
-            _get_model_d();        print("[startup] Model D loaded")
+            _get_rembg();          print("[startup] rembg session ready")
+            _get_model_d();        print("[startup] Model D loaded (refinement stage)")
             _get_model_a();        print("[startup] Model A loaded")
             _get_embed_extractor();print("[startup] embedding_extractor loaded")
             _get_model_b();        print("[startup] Model B loaded")
@@ -256,6 +329,7 @@ def preload_models():
             _get_idx_to_type();    print("[startup] class_indices loaded")
             _get_idx_to_layer();   print("[startup] layer_indices loaded")
             _get_idx_to_season();  print("[startup] season_indices loaded")
+            # SegFormer remains lazy-loaded; only used if explicitly re-enabled.
             print("[startup] All v3 models ready.")
         except Exception as e:
             print(f"[startup] WARNING: model preload failed: {e}")
@@ -271,6 +345,31 @@ def _preprocess_efficientnetb2(img: Image.Image) -> np.ndarray:
     from tensorflow.keras.applications.efficientnet import preprocess_input
     arr = np.array(img.convert("RGB").resize(IMG_SIZE), dtype=np.float32)
     return preprocess_input(np.expand_dims(arr, 0))
+
+
+def _clean_mask(mask_2d: np.ndarray) -> np.ndarray:
+    """Post-process a raw segmenter mask:
+       1. morphological closing — fix speckle gaps along edges
+       2. fill internal holes — repairs polo collars / logos / skin showing through
+       3. keep only the largest connected component — drops a second item the
+          segmenter accidentally returned (e.g. shorts visible under a t-shirt)
+    Input/output are float32 in [0, 1] at the same shape."""
+    from scipy.ndimage import binary_closing, binary_fill_holes, label
+
+    m = mask_2d > 0.5
+    if not m.any():
+        return mask_2d.astype(np.float32)
+
+    m = binary_closing(m, iterations=3)
+    m = binary_fill_holes(m)
+
+    labeled, n = label(m)
+    if n > 1:
+        sizes = np.bincount(labeled.ravel())
+        sizes[0] = 0                                      # ignore background
+        m = (labeled == sizes.argmax())
+
+    return m.astype(np.float32)
 
 
 def _composite_on_white(img: Image.Image, mask_2d: np.ndarray, size=IMG_SIZE) -> Image.Image:
@@ -309,7 +408,8 @@ def _segment_with_segformer(img: Image.Image) -> np.ndarray:
 
     # Resize to SEG_SIZE for downstream pipeline compatibility
     mask_pil = Image.fromarray(mask_full).resize(SEG_SIZE, Image.BILINEAR)
-    return (np.array(mask_pil, dtype=np.float32) / 255.0 > 0.5).astype(np.float32)
+    raw = (np.array(mask_pil, dtype=np.float32) / 255.0 > 0.5).astype(np.float32)
+    return _clean_mask(raw)
 
 
 def _segment_model_d(img: Image.Image) -> np.ndarray:
@@ -317,7 +417,8 @@ def _segment_model_d(img: Image.Image) -> np.ndarray:
     model_d = _get_model_d()
     arr = np.array(img.convert("RGB").resize(SEG_SIZE), dtype=np.float32) / 255.0
     pred = model_d.predict(np.expand_dims(arr, 0), verbose=0)[0, :, :, 0]
-    return (pred > 0.5).astype(np.float32)
+    raw = (pred > 0.5).astype(np.float32)
+    return _clean_mask(raw)
 
 
 def _build_no_bg_rgba(original: Image.Image, mask_2d: np.ndarray) -> Image.Image:
@@ -400,35 +501,44 @@ async def analyze(file: UploadFile = File(...)):
     except Exception:
         raise HTTPException(400, "Cannot decode image")
 
-    # Stage 1 — segmentation: SegFormer-ATR primary, Model D fallback, raw image last
-    # SegFormer is the right tool for user-uploaded photos: it produces
-    # garment-only masks (no face/hair/limbs) and was trained on real-world
-    # cluttered backgrounds. Model D (rembg distillate) is the fallback when
-    # SegFormer fails or returns a degenerate mask. Raw image is the last
-    # resort so the classifier still sees something instead of nothing.
+    # Stage 1 — two-stage segmentation: rembg + Model D refinement.
+    #
+    # Step 1: rembg (generic background remover) strips the original (possibly
+    #         cluttered / coloured) background, leaving the salient object on a
+    #         white canvas — i.e. a synthetic studio photo.
+    # Step 2: Model D (Attention U-Net, trained ONLY on white-background studio
+    #         photos) runs on that cleaned image and refines the mask. Because
+    #         the input now matches its training distribution, Model D is
+    #         confident; it drops anything rembg accidentally kept that does
+    #         not look garment-shaped (shadows, stray hand, edge of furniture).
+    #
+    # Fallbacks: if Model D refinement fails, fall back to rembg-only mask;
+    # if even rembg fails, use the raw image as last resort.
+    HEALTHY_LO, HEALTHY_HI = 0.03, 0.90
+
     mask_seg = None
-    used_segmenter = "segformer"
+    used_segmenter = "rembg+model_d"
     try:
-        mask_seg = _segment_with_segformer(original)
+        mask_seg = _segment_rembg_then_d(original)
         coverage = float(mask_seg.mean())
-        if not (MASK_COVERAGE_LO <= coverage <= MASK_COVERAGE_HI):
-            print(f"[/analyze] SegFormer coverage={coverage:.3f} — fallback to Model D")
+        if not (HEALTHY_LO <= coverage <= HEALTHY_HI):
+            print(f"[/analyze] rembg+Model D coverage={coverage:.3f} out of range — fall back to rembg only")
             mask_seg = None
     except Exception as e:
-        print(f"[/analyze] SegFormer failed: {e} — fallback to Model D")
+        print(f"[/analyze] rembg+Model D failed: {e} — fall back to rembg only")
         mask_seg = None
 
     if mask_seg is None:
-        used_segmenter = "model_d"
+        used_segmenter = "rembg"
         try:
-            mask_seg = _segment_model_d(original)
+            mask_seg = _segment_with_rembg_only(original)
             coverage = float(mask_seg.mean())
             if not (MASK_COVERAGE_LO <= coverage <= MASK_COVERAGE_HI):
-                print(f"[/analyze] Model D coverage={coverage:.3f} — using raw image")
+                print(f"[/analyze] rembg coverage={coverage:.3f} — using raw image")
                 mask_seg = None
                 used_segmenter = "raw_image"
         except Exception as e:
-            print(f"[/analyze] Model D failed: {e} — using raw image")
+            print(f"[/analyze] rembg failed: {e} — using raw image")
             mask_seg = None
             used_segmenter = "raw_image"
 
@@ -521,12 +631,16 @@ def health():
         "status":     "ok",
         "service":    "ml-service v3",
         "models":     {
+            "segmentation_pipeline": f"rembg/{REMBG_MODEL} → Model D refinement (white-bg studio domain)",
+            "rembg":     f"rembg/{REMBG_MODEL} (stage 1: background removal)",
+            "model_d":   "modelD_best.keras (Attention U-Net) — stage 2: refinement on rembg-cleaned image",
+            "segformer": f"{SEGFORMER_MODEL_ID} (lazy-loaded, dormant unless explicitly enabled)",
             "model_a":   "modelA_best.keras (EfficientNetB2 multi-head)",
-            "model_d":   "modelD_best.keras (Attention U-Net) — fallback segmenter",
             "model_b":   "modelB_compatibility.h5 (Pairwise MLP)",
             "embedding_extractor": "embedding_extractor.h5 (128-d)",
-            "segformer": f"{SEGFORMER_MODEL_ID} (primary inference segmenter, lazy-loaded)",
         },
+        "rembg_loaded":     _rembg_session is not None,
         "segformer_loaded": _segformer_model is not None,
+        "segformer_enabled": SEGFORMER_ENABLED,
         "training_metrics": summary.get("test_metrics", {}),
     }

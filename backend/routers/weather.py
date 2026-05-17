@@ -13,9 +13,8 @@ from deps import get_current_user
 router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
 
 KEY = os.getenv("OPENWEATHER_API_KEY", "")
-# Simple in-process cache: {user_id: (timestamp, data)}
 _cache: dict = {}
-TTL = 1800  # 30 minutes
+TTL = 1800
 
 
 async def _fetch_weather(lat: float, lon: float) -> dict:
@@ -65,7 +64,6 @@ async def current(
             db.query(User).filter(User.id == uid).update({"latitude": lat, "longitude": lon})
             db.commit()
         result = await _fetch_weather(lat, lon)
-        # prefer the user-saved name (from Profile or suggestion pick) over OpenWeather's bare city
         if user.city:
             result["city"] = user.city
     except Exception:
@@ -85,7 +83,7 @@ class CityBody(BaseModel):
 class LocationBody(BaseModel):
     lat:  float
     lon:  float
-    city: Optional[str] = None  # optional resolved name (from suggestion or reverse-geocode)
+    city: Optional[str] = None
 
 
 def _invalidate_caches(uid):
@@ -103,7 +101,6 @@ async def set_city(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # User typed a city by hand → coords from previous location are stale, clear them.
     db.query(User).filter(User.id == user.id).update({
         "city": body.city,
         "latitude": None,

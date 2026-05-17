@@ -1,21 +1,5 @@
-"""Wearable-temperature defaults — pure data + a small helper.
-
-Derives a (temp_min, temp_max) range for a wardrobe item given:
-  - category    (top / mid / outer / bottom / footwear / accessory)
-  - subcategory (t-shirt, jeans, sandals, ...)
-  - material    (cotton, wool, down, ...)
-
-The numbers are based on common wardrobe-app heuristics, not exact thermo-
-physics. They are intentionally CONSERVATIVE (wide rather than narrow) so
-the recommender doesn't accidentally exclude items the user could still wear.
-
-Mirror copy in `frontend/src/pages/AddItem.jsx` keeps the UI in sync without
-an extra round-trip on every keystroke. Backend remains authoritative.
-"""
-
 from typing import Optional, Tuple
 
-# (temp_min, temp_max) per (category, subcategory)
 BASE_RANGES = {
     # ── Tops ──────────────────────────────────────────────────────────────
     ("top",    "t-shirt"):       (15,  35),
@@ -54,8 +38,6 @@ BASE_RANGES = {
     ("footwear", "boots"):       (-15, 15),
     ("footwear", "loafers"):     ( 5,  28),
     # ── Accessories ──────────────────────────────────────────────────────
-    # Most accessories don't gate outfits → wide-open. A few that do (scarf,
-    # hat) ARE temperature-sensitive — they should drop out at hot weather.
     ("accessory", "watch"):      (-30, 40),
     ("accessory", "sunglasses"): (-30, 40),
     ("accessory", "belt"):       (-30, 40),
@@ -69,7 +51,6 @@ BASE_RANGES = {
     ("accessory", "scarf"):      (-30, 12),
 }
 
-# Per-category fallback if subcategory isn't recognised
 CATEGORY_FALLBACK = {
     "top":       (12, 30),
     "mid":       (-5, 20),
@@ -79,27 +60,23 @@ CATEGORY_FALLBACK = {
     "accessory": (-30, 40),
 }
 
-# Material modifiers — shift temp_min down (extends cold tolerance) for warm
-# materials and shift temp_max up (extends heat tolerance) for breathable ones.
-# Applied AFTER the base range is looked up.
 MATERIAL_MODIFIERS = {
-    # Warm: only extend the cold side
+    # warm
     "wool":      {"min_delta": -5,  "max_delta":  0},
     "fleece":    {"min_delta": -5,  "max_delta":  0},
     "down":      {"min_delta": -10, "max_delta":  0},
     "knit":      {"min_delta": -3,  "max_delta":  0},
     "leather":   {"min_delta": -3,  "max_delta":  0},
-    # Breathable / cool: only extend the warm side
+    # breathable / cool
     "linen":     {"min_delta":  0,  "max_delta":  3},
     "silk":      {"min_delta":  0,  "max_delta":  2},
-    # Neutral
+    # neutral
     "cotton":    {"min_delta":  0,  "max_delta":  0},
     "denim":     {"min_delta":  0,  "max_delta":  0},
     "polyester": {"min_delta":  0,  "max_delta":  0},
     "synthetic": {"min_delta":  0,  "max_delta":  0},
 }
 
-# Hard clamping bounds so a wool down jacket doesn't end up at -50.
 MIN_BOUND, MAX_BOUND = -30, 45
 
 
@@ -108,18 +85,11 @@ def derive_temp_range(
     subcategory: Optional[str] = None,
     material: Optional[str] = None,
 ) -> Tuple[int, int]:
-    """Return a sensible (temp_min, temp_max) based on item attributes.
-    All inputs are case-insensitive and tolerant of None.
-    """
     cat = (category or "").lower().strip()
     sub = (subcategory or "").lower().strip()
     mat = (material or "").lower().strip()
 
     base = BASE_RANGES.get((cat, sub))
-    # Subcategory-priority cross-lookup: if (cat, sub) isn't in the table
-    # but `sub` exists under a DIFFERENT category, use that range.
-    # Catches the common misclassification of warm garments (hoodie tagged
-    # as `top` instead of `mid` by Model A's layer head, etc.).
     if base is None and sub:
         for (c2, s2), r in BASE_RANGES.items():
             if s2 == sub:

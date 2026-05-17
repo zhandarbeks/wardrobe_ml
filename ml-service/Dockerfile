@@ -14,6 +14,11 @@ RUN pip install --no-cache-dir \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download the rembg u2netp weights (~5 MB) into the image so the first
+# /analyze call doesn't pay a network round-trip. Cached at /root/.u2net/.
+ENV U2NET_HOME=/root/.u2net
+RUN python -c "from rembg import new_session; new_session('u2netp')"
+
 # Copy trained models into the image
 COPY models/ /app/models/
 

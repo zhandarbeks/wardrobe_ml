@@ -1,18 +1,5 @@
-"""Style-tag defaults — derives a list of likely styles for a wardrobe item
-from (category, subcategory, material).
-
-Style vocabulary (must match the seeded styles in models.py / seed.py):
-    casual, smart casual, business, sport, streetwear, formal
-
-Output is a *suggestion* — the user can toggle them in the UI. We return at
-most 2-3 styles per item, prioritising the most likely first.
-
-Mirrored client-side in frontend/src/pages/AddItem.jsx for instant feedback.
-"""
-
 from typing import List, Optional
 
-# (category, subcategory) -> list of likely styles in priority order
 STYLE_BY_SUBCAT = {
     # ── Tops ──────────────────────────────────────────────────────────────
     ("top",    "t-shirt"):    ["casual", "streetwear"],
@@ -51,7 +38,7 @@ STYLE_BY_SUBCAT = {
     ("footwear", "boots"):       ["casual", "smart casual"],
     ("footwear", "loafers"):     ["smart casual", "business"],
     # ── Accessories ──────────────────────────────────────────────────────
-    ("accessory", "watch"):      [],            # no strong preference
+    ("accessory", "watch"):      [],
     ("accessory", "sunglasses"): ["casual"],
     ("accessory", "belt"):       ["smart casual"],
     ("accessory", "backpack"):   ["casual", "streetwear", "sport"],
@@ -64,7 +51,6 @@ STYLE_BY_SUBCAT = {
     ("accessory", "tie"):        ["business", "formal"],
 }
 
-# Per-category fallback when the subcategory isn't recognised.
 CATEGORY_FALLBACK = {
     "top":       ["casual"],
     "mid":       ["casual"],
@@ -74,8 +60,6 @@ CATEGORY_FALLBACK = {
     "accessory": [],
 }
 
-# Material can shift the style mix — e.g. wool blazer is more formal than
-# a synthetic one. We append (or prepend) styles from this map and dedupe.
 MATERIAL_STYLE_HINTS = {
     "wool":      ["smart casual", "business"],
     "silk":      ["formal", "business"],
@@ -86,7 +70,6 @@ MATERIAL_STYLE_HINTS = {
     "down":      ["casual", "sport"],
     "knit":      ["casual", "smart casual"],
     "synthetic": ["sport"],
-    # cotton / polyester are too generic to imply a style
 }
 
 
@@ -108,12 +91,9 @@ def derive_styles(
         base = CATEGORY_FALLBACK.get(cat, [])
     styles.extend(base)
 
-    # Material can promote/demote styles — only ADD options that align with
-    # the existing category bucket (not force "formal" onto sneakers).
     hints = MATERIAL_STYLE_HINTS.get(mat, [])
     for h in hints:
         if h not in styles:
-            # Don't promote "formal"/"business" onto inherently-casual subcategories
             if h in {"formal", "business"} and sub in {
                 "t-shirt", "tank top", "shorts", "leggings",
                 "track pants", "joggers", "sandals", "flip flops",
@@ -122,7 +102,6 @@ def derive_styles(
                 continue
             styles.append(h)
 
-    # Dedupe while preserving order, then trim
     seen = set(); out = []
     for s in styles:
         if s in seen:

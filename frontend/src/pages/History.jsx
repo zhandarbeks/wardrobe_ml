@@ -6,7 +6,7 @@ const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
                 'July', 'August', 'September', 'October', 'November', 'December']
 
-// local YYYY-MM-DD (not UTC) — matches what the user actually wore
+// local YYYY-MM-DD
 const dateKey = d => {
   const x = new Date(d)
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
@@ -75,7 +75,6 @@ export default function History() {
   // calendar grid for `cursor` month — 6 weeks × 7 days
   const grid = useMemo(() => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
-    // Monday-based offset: JS getDay() 0=Sun..6=Sat → convert to 0=Mon..6=Sun
     const offset = (first.getDay() + 6) % 7
     const start = new Date(first); start.setDate(first.getDate() - offset)
     const cells = []

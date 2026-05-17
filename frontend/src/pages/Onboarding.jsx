@@ -35,7 +35,6 @@ const STEPS = [
 ]
 
 function ColorGrid({ field, accent, symbol, isSelected, onToggle }) {
-  // 18 colours → exactly 2 rows of 9
   const COLS = Math.ceil(COLORS.length / 2)
   return (
     <div style={{

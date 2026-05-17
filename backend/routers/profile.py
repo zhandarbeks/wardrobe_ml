@@ -69,17 +69,17 @@ def save_prefs(
     p.heat_sensitivity = body.heat_sensitivity
     p.allow_layering   = body.allow_layering
 
-    # Sync styles
+    # sync styles
     p.styles.clear()
     for name in _parse_names(body.styles):
         p.styles.append(_get_or_create(db, Style, name))
 
-    # Sync favourite colours
+    # sync favourite colours
     p.favourite_colours.clear()
     for name in _parse_names(body.favorite_colors):
         p.favourite_colours.append(_get_or_create(db, Colour, name))
 
-    # Sync disliked colours
+    # sync disliked colours
     p.disliked_colours.clear()
     for name in _parse_names(body.disliked_colors):
         p.disliked_colours.append(_get_or_create(db, Colour, name))
