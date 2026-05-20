@@ -3,33 +3,26 @@ import api from '../api'
 
 const STYLES_LIST = ['casual', 'smart casual', 'business', 'sport', 'streetwear', 'formal']
 const COLORS = [
-  'black', 'white', 'gray', 'navy', 'royal blue', 'sky blue',
-  'teal', 'green', 'olive', 'yellow', 'orange', 'red',
-  'burgundy', 'pink', 'purple', 'beige', 'brown', 'camel',
+  ['black', '#1a1a1a'], ['white', '#f0f0f0'], ['gray', '#888'],
+  ['navy', '#0a1e50'], ['royal blue', '#4169e1'], ['sky blue', '#87ceeb'],
+  ['teal', '#008080'], ['green', '#228b22'], ['olive', '#6b8e23'],
+  ['yellow', '#ffd700'], ['orange', '#ff8c00'], ['red', '#c81e1e'],
+  ['burgundy', '#800020'], ['pink', '#ff69b3'], ['purple', '#800080'],
+  ['beige', '#e8dcc8'], ['brown', '#8b4513'], ['camel', '#c19a6b'],
 ]
-const COLOR_HEX = {
-  black: '#1a1a1a', white: '#f5f5f5', gray: '#888', navy: '#0a1e50',
-  'royal blue': '#4169e1', 'sky blue': '#87ceeb', teal: '#008080',
-  green: '#228b22', olive: '#6b8e23', yellow: '#ffd700', orange: '#ff8c00',
-  red: '#c81e1e', burgundy: '#800020', pink: '#ff69b3', purple: '#800080',
-  beige: '#f5f5dc', brown: '#8b4513', camel: '#c19a6b',
-}
+const LIGHT_COLORS = ['white', 'beige', 'yellow', 'sky blue']
 
-const INPUT_STYLE = {
-  width: '100%', padding: '10px 12px', border: '1px solid #ddd',
-  borderRadius: 8, fontSize: 14, outline: 'none', fontFamily: 'inherit',
-}
-
-function Section({ title, children }) {
+function Msg({ msg }) {
+  if (!msg) return null
   return (
-    <div style={{ marginBottom: 28 }}>
-      <div style={{
-        fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
-        textTransform: 'uppercase', color: '#999', marginBottom: 12,
-      }}>
-        {title}
+    <div className={msg.type === 'success' ? '' : 'bru-on-accent'} style={{
+      marginTop: 10, padding: 8,
+      background: msg.type === 'success' ? 'var(--line-soft)' : 'var(--accent)',
+      borderLeft: '4px solid var(--ink)',
+    }}>
+      <div className="bru-mono" style={{ fontSize: 10 }}>
+        {msg.type === 'success' ? '✓ ' : '⚠ '}{msg.text}
       </div>
-      {children}
     </div>
   )
 }
@@ -40,7 +33,7 @@ export default function Profile() {
 
   const [account, setAccount] = useState({ name: user.name || '', email: user.email || '' })
   const [accountSaving, setAccountSaving] = useState(false)
-  const [accountMsg,    setAccountMsg]    = useState(null)  // {type, text}
+  const [accountMsg,    setAccountMsg]    = useState(null)
 
   const [pwd, setPwd] = useState({ current_password: '', new_password: '', confirm_password: '' })
   const [pwdSaving, setPwdSaving] = useState(false)
@@ -57,11 +50,9 @@ export default function Profile() {
     styles: '', favorite_colors: '', disliked_colors: '',
     heat_sensitivity: 'normal', allow_layering: true,
   })
-  const [savedPrefs, setSavedPrefs] = useState(null)  // baseline for dirty check
+  const [savedPrefs, setSavedPrefs] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
-
-  const [statsInfo, setStatsInfo] = useState(null)  // {total_items, total_worn}
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deletePwd,  setDeletePwd]  = useState('')
@@ -72,57 +63,33 @@ export default function Profile() {
   const [avatarBusy, setAvatarBusy] = useState(false)
 
   useEffect(() => {
-    api.get('/api/v1/profile/preferences').then(r => {
-      setPrefs(r.data)
-      setSavedPrefs(r.data)
-    })
-    api.get('/api/v1/wardrobe/stats')
-      .then(r => setStatsInfo({
-        total_items: r.data.total,
-        total_worn:  r.data.total_outfit_wears,
-      }))
-      .catch(() => {})
-    // pull fresh user (city/lat/lon may not be in localStorage from older logins)
+    api.get('/api/v1/profile/preferences').then(r => { setPrefs(r.data); setSavedPrefs(r.data) }).catch(() => {})
     api.get('/api/v1/auth/me').then(r => {
       const u = r.data
-      setLocation({
-        city:      u.city ?? '',
-        latitude:  u.latitude  != null ? String(u.latitude)  : '',
-        longitude: u.longitude != null ? String(u.longitude) : '',
-      })
+      setLocation({ city: u.city ?? '', latitude: u.latitude != null ? String(u.latitude) : '', longitude: u.longitude != null ? String(u.longitude) : '' })
       const cached = JSON.parse(localStorage.getItem('user') || '{}')
-      const merged = {
-        ...cached,
-        name: u.name, email: u.email, role: u.role,
-        city: u.city, avatar_url: u.avatar_url, created_at: u.created_at,
-      }
+      const merged = { ...cached, name: u.name, email: u.email, role: u.role, city: u.city, avatar_url: u.avatar_url, created_at: u.created_at }
       localStorage.setItem('user', JSON.stringify(merged))
       setUser(merged)
+      setAccount({ name: u.name || '', email: u.email || '' })
     }).catch(() => {})
   }, [])
 
   const saveAccount = async () => {
-    setAccountSaving(true)
-    setAccountMsg(null)
+    setAccountSaving(true); setAccountMsg(null)
     try {
-      const res = await api.patch('/api/v1/auth/me', {
-        name:  account.name.trim(),
-        email: account.email.trim(),
-      })
+      const res = await api.patch('/api/v1/auth/me', { name: account.name.trim(), email: account.email.trim() })
       const updated = { ...user, name: res.data.name, email: res.data.email }
       localStorage.setItem('user', JSON.stringify(updated))
       setUser(updated)
-      setAccountMsg({ type: 'success', text: 'Account updated!' })
+      setAccountMsg({ type: 'success', text: 'Account updated' })
       setTimeout(() => setAccountMsg(null), 2500)
     } catch (e) {
       setAccountMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to update' })
-    } finally {
-      setAccountSaving(false)
-    }
+    } finally { setAccountSaving(false) }
   }
 
   const handleCityInput = val => {
-    // typing invalidates previously-detected coordinates so we don't save mismatched data
     setLocation(l => ({ ...l, city: val, latitude: '', longitude: '' }))
     if (searchTimer.current) clearTimeout(searchTimer.current)
     if (!val.trim() || val.length < 2) { setCitySuggestions([]); return }
@@ -133,101 +100,62 @@ export default function Profile() {
       } catch { setCitySuggestions([]) }
     }, 400)
   }
-
   const pickSuggestion = s => {
     setLocation({
-      city:      s.state ? `${s.name}, ${s.state}, ${s.country}` : `${s.name}, ${s.country}`,
-      latitude:  String(s.lat),
-      longitude: String(s.lon),
+      city: s.state ? `${s.name}, ${s.state}, ${s.country}` : `${s.name}, ${s.country}`,
+      latitude: String(s.lat), longitude: String(s.lon),
     })
     setCitySuggestions([])
   }
-
   const useMyLocation = () => {
-    if (!('geolocation' in navigator)) {
-      setLocMsg({ type: 'error', text: 'Geolocation is not supported by this browser' })
-      return
-    }
-    setGeoLoading(true)
-    setLocMsg(null)
+    if (!('geolocation' in navigator)) { setLocMsg({ type: 'error', text: 'Geolocation not supported' }); return }
+    setGeoLoading(true); setLocMsg(null)
     navigator.geolocation.getCurrentPosition(
       async pos => {
-        const lat = pos.coords.latitude
-        const lon = pos.coords.longitude
+        const lat = pos.coords.latitude, lon = pos.coords.longitude
         let cityName = ''
         try {
           const res = await api.get(`/api/v1/weather/reverse?lat=${lat}&lon=${lon}`)
-          if (res.data) {
-            cityName = res.data.state
-              ? `${res.data.name}, ${res.data.state}, ${res.data.country}`
-              : `${res.data.name}, ${res.data.country}`
-          }
-        } catch { /* fallback: leave city as-is */ }
-        setLocation(l => ({
-          city:      cityName || l.city,
-          latitude:  lat.toFixed(5),
-          longitude: lon.toFixed(5),
-        }))
+          if (res.data) cityName = res.data.state ? `${res.data.name}, ${res.data.state}, ${res.data.country}` : `${res.data.name}, ${res.data.country}`
+        } catch {}
+        setLocation(l => ({ city: cityName || l.city, latitude: lat.toFixed(5), longitude: lon.toFixed(5) }))
         setCitySuggestions([])
         setGeoLoading(false)
       },
-      err => {
-        setLocMsg({ type: 'error', text: err.message || 'Failed to get location' })
-        setGeoLoading(false)
-      },
-      { timeout: 10000, enableHighAccuracy: false },
+      err => { setLocMsg({ type: 'error', text: err.message }); setGeoLoading(false) },
+      { timeout: 10000 },
     )
   }
-
   const saveLocation = async () => {
-    setLocSaving(true)
-    setLocMsg(null)
+    setLocSaving(true); setLocMsg(null)
     const payload = { city: location.city.trim() }
-    if (location.latitude  !== '') payload.latitude  = parseFloat(location.latitude)
+    if (location.latitude !== '') payload.latitude = parseFloat(location.latitude)
     if (location.longitude !== '') payload.longitude = parseFloat(location.longitude)
-    if (payload.latitude  !== undefined && Number.isNaN(payload.latitude))  { setLocMsg({ type: 'error', text: 'Latitude is invalid' }); setLocSaving(false); return }
-    if (payload.longitude !== undefined && Number.isNaN(payload.longitude)) { setLocMsg({ type: 'error', text: 'Longitude is invalid' }); setLocSaving(false); return }
     try {
       const res = await api.patch('/api/v1/auth/me', payload)
       const updated = { ...user, city: res.data.city }
       localStorage.setItem('user', JSON.stringify(updated))
       setUser(updated)
-      setLocation({
-        city:      res.data.city ?? '',
-        latitude:  res.data.latitude  != null ? String(res.data.latitude)  : '',
-        longitude: res.data.longitude != null ? String(res.data.longitude) : '',
-      })
-      setLocMsg({ type: 'success', text: 'Location updated! Weather will refresh on next outfit.' })
-      setTimeout(() => setLocMsg(null), 3000)
+      setLocMsg({ type: 'success', text: 'Location updated' })
+      setTimeout(() => setLocMsg(null), 2500)
     } catch (e) {
-      setLocMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to update location' })
-    } finally {
-      setLocSaving(false)
-    }
+      setLocMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to update' })
+    } finally { setLocSaving(false) }
   }
 
   const uploadAvatar = async e => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const file = e.target.files?.[0]; if (!file) return
     if (file.size > 5 * 1024 * 1024) { alert('File too large (max 5MB)'); return }
     setAvatarBusy(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await api.post('/api/v1/auth/avatar', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const fd = new FormData(); fd.append('file', file)
+      const res = await api.post('/api/v1/auth/avatar', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       const updated = { ...user, avatar_url: res.data.avatar_url }
       localStorage.setItem('user', JSON.stringify(updated))
       setUser(updated)
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Upload failed')
-    } finally {
-      setAvatarBusy(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
+    } catch (err) { alert(err.response?.data?.detail || 'Upload failed') }
+    finally { setAvatarBusy(false); if (fileInputRef.current) fileInputRef.current.value = '' }
   }
-
   const removeAvatar = async () => {
     if (!confirm('Remove your profile photo?')) return
     setAvatarBusy(true)
@@ -236,549 +164,298 @@ export default function Profile() {
       const updated = { ...user, avatar_url: null }
       localStorage.setItem('user', JSON.stringify(updated))
       setUser(updated)
-    } finally {
-      setAvatarBusy(false)
-    }
+    } finally { setAvatarBusy(false) }
+  }
+
+  const changePassword = async () => {
+    setPwdSaving(true); setPwdMsg(null)
+    try {
+      await api.patch('/api/v1/auth/password', pwd)
+      setPwd({ current_password: '', new_password: '', confirm_password: '' })
+      setPwdMsg({ type: 'success', text: 'Password changed' })
+      setTimeout(() => setPwdMsg(null), 2500)
+    } catch (e) {
+      setPwdMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to change' })
+    } finally { setPwdSaving(false) }
   }
 
   const deleteAccount = async () => {
-    if (!deletePwd) { setDeleteMsg({ type: 'error', text: 'Password is required' }); return }
-    if (!confirm('Permanently delete your account and ALL your data (items, outfits, history)? This cannot be undone.')) return
-    setDeleteBusy(true)
-    setDeleteMsg(null)
+    if (!deletePwd) { setDeleteMsg({ type: 'error', text: 'Password required' }); return }
+    if (!confirm('Permanently delete your account and ALL data? Cannot be undone.')) return
+    setDeleteBusy(true); setDeleteMsg(null)
     try {
       await api.delete('/api/v1/auth/me', { data: { password: deletePwd } })
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
+      localStorage.removeItem('token'); localStorage.removeItem('user')
       window.location.href = '/login'
     } catch (e) {
-      setDeleteMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to delete account' })
+      setDeleteMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to delete' })
       setDeleteBusy(false)
     }
   }
 
-  const changePassword = async () => {
-    setPwdSaving(true)
-    setPwdMsg(null)
-    try {
-      await api.patch('/api/v1/auth/password', pwd)
-      setPwd({ current_password: '', new_password: '', confirm_password: '' })
-      setPwdMsg({ type: 'success', text: 'Password changed!' })
-      setTimeout(() => setPwdMsg(null), 2500)
-    } catch (e) {
-      setPwdMsg({ type: 'error', text: e.response?.data?.detail || 'Failed to change password' })
-    } finally {
-      setPwdSaving(false)
-    }
-  }
-
   const toggle = (field, val) => {
-    const arr  = (prefs[field] || '').split(',').filter(Boolean)
+    const arr = (prefs[field] || '').split(',').filter(Boolean)
     const next = arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]
     setPrefs(p => ({ ...p, [field]: next.join(',') }))
   }
   const has = (field, val) => (prefs[field] || '').split(',').includes(val)
-
-  const save = async () => {
+  const savePrefs = async () => {
     setSaving(true)
     try {
       await api.put('/api/v1/profile/preferences', prefs)
-      setSavedPrefs(prefs)
-      setSaved(true)
+      setSavedPrefs(prefs); setSaved(true)
       setTimeout(() => setSaved(false), 2500)
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
   }
-
-  const prefsDirty = savedPrefs && (
-    prefs.styles           !== savedPrefs.styles ||
-    prefs.favorite_colors  !== savedPrefs.favorite_colors ||
-    prefs.disliked_colors  !== savedPrefs.disliked_colors ||
-    prefs.heat_sensitivity !== savedPrefs.heat_sensitivity ||
-    prefs.allow_layering   !== savedPrefs.allow_layering
-  )
-
-  // Warn before navigating away with unsaved Preferences
-  useEffect(() => {
-    if (!prefsDirty) return
-    const handler = e => { e.preventDefault(); e.returnValue = '' }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [prefsDirty])
+  const emailVerified = user.email_verified_at != null
 
   return (
-    <div className="page" style={{ maxWidth: 600, margin: '0 auto' }}>
-
-      {/* Avatar + user block */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 16,
-        marginBottom: 32,
-      }}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          onChange={uploadAvatar}
-          style={{ display: 'none' }}
-        />
-        <div
-          onClick={() => !avatarBusy && fileInputRef.current?.click()}
-          title="Click to change photo"
-          style={{
-            width: 64, height: 64, borderRadius: '50%',
-            background: user.avatar_url ? '#eee' : '#1a1a1a',
-            color: '#fff', overflow: 'hidden', position: 'relative',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 22, fontWeight: 700, flexShrink: 0,
-            cursor: avatarBusy ? 'wait' : 'pointer',
-          }}
-        >
-          {user.avatar_url ? (
-            <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            initials
-          )}
-          {avatarBusy && (
-            <div style={{
-              position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11,
-            }}>…</div>
-          )}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>{user.name}</div>
-          <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{user.email}</div>
-          {user.created_at && (
-            <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>
-              Member since {new Date(user.created_at).toLocaleDateString('en-GB', {
-                day: 'numeric', month: 'long', year: 'numeric',
-              })}
-            </div>
-          )}
-          <div style={{ marginTop: 6, display: 'flex', gap: 10, fontSize: 11 }}>
-            <span
-              onClick={() => !avatarBusy && fileInputRef.current?.click()}
-              style={{ color: '#1a1a1a', cursor: 'pointer', fontWeight: 600 }}
-            >
-              {user.avatar_url ? 'Change photo' : 'Upload photo'}
-            </span>
-            {user.avatar_url && (
-              <span
-                onClick={removeAvatar}
-                style={{ color: '#dc2626', cursor: 'pointer', fontWeight: 600 }}
-              >
-                Remove
-              </span>
-            )}
-          </div>
-        </div>
-        <span className="tag" style={{ marginLeft: 'auto' }}>{user.role}</span>
+    <div className="bru-page">
+      <div style={{ borderBottom: '2px solid var(--ink)', paddingBottom: 14 }}>
+        <div className="bru-mono">PROFILE</div>
+        <div className="bru-serif" style={{ fontSize: 64, lineHeight: 0.95 }}>The <em style={{ color: 'var(--accent)' }}>subject</em>.</div>
       </div>
 
-      {/* Account info — quick stats */}
-      {statsInfo && (
-        <div className="grid grid-3" style={{ marginBottom: 20 }}>
-          {[
-            ['Items',       statsInfo.total_items],
-            ['Outfit wears', statsInfo.total_worn],
-            ['Member since',
-              user.created_at
-                ? new Date(user.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
-                : '—',
-            ],
-          ].map(([label, val]) => (
-            <div key={label} className="card text-center" style={{ padding: 14 }}>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{val}</div>
-              <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>{label}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 18, marginTop: 18 }}>
+        {/* LEFT — identity */}
+        <div className="bru-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 20 }}>
+          <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadAvatar} style={{ display: 'none' }} />
+          <div onClick={() => !avatarBusy && fileInputRef.current?.click()}
+            style={{ width: 120, height: 120, background: 'var(--ink)', color: 'var(--accent)', display: 'grid', placeItems: 'center', fontFamily: 'Instrument Serif, serif', fontSize: 50, fontStyle: 'italic', cursor: 'pointer', position: 'relative', overflow: 'hidden', border: '1.5px solid var(--ink)' }}>
+            {user.avatar_url
+              ? <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : initials}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'var(--accent)', color: 'var(--ink)', fontFamily: 'JetBrains Mono, monospace', fontSize: 8, letterSpacing: '0.15em', padding: '3px 0' }}>
+              {avatarBusy ? 'WORKING…' : user.avatar_url ? 'REPLACE' : '+ UPLOAD'}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+          {user.avatar_url && (
+            <button className="bru-btn" style={{ marginTop: 8, height: 24, fontSize: 9, padding: '0 10px' }} onClick={removeAvatar}>Remove avatar</button>
+          )}
+          <div className="bru-serif" style={{ fontSize: 24, marginTop: 14 }}>{user.name || 'Anonymous'}</div>
+          <div className="bru-mono" style={{ fontSize: 10, color: 'var(--mute)', marginTop: 4 }}>{user.email}</div>
 
-      {/* Account Settings */}
-      <div className="card" style={{ padding: 28, marginBottom: 20 }}>
-        <Section title="Account Settings">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>Name</label>
-              <input
-                value={account.name}
-                onChange={e => setAccount(a => ({ ...a, name: e.target.value }))}
-                style={INPUT_STYLE}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>Email</label>
-              <input
-                type="email"
-                value={account.email}
-                onChange={e => setAccount(a => ({ ...a, email: e.target.value }))}
-                style={INPUT_STYLE}
-              />
-            </div>
-            {accountMsg && (
-              <div className={`alert alert-${accountMsg.type === 'success' ? 'success' : 'error'}`}>
-                {accountMsg.text}
+          {/* Email verification */}
+          <div style={{ width: '100%', marginTop: 16 }}>
+            {emailVerified ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '6px 10px', border: '1.5px solid var(--ink)' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><path d="M5 13l4 4L19 7"/></svg>
+                <span className="bru-mono" style={{ fontSize: 9 }}>E-MAIL VERIFIED</span>
+              </div>
+            ) : (
+              <div className="bru-on-accent" style={{ padding: 10, background: 'var(--accent)', borderLeft: '4px solid var(--ink)' }}>
+                <div className="bru-mono" style={{ fontSize: 10 }}>⚠ E-MAIL NOT VERIFIED</div>
               </div>
             )}
-            <button
-              className="btn btn-primary"
-              style={{ height: 40, fontSize: 14 }}
-              onClick={saveAccount}
-              disabled={accountSaving || (!account.name.trim() || !account.email.trim())}
-            >
-              {accountSaving ? 'Saving…' : 'Save Account'}
-            </button>
           </div>
-        </Section>
-      </div>
+        </div>
 
-      {/* Location */}
-      <div className="card" style={{ padding: 28, marginBottom: 20 }}>
-        <Section title="Location">
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 12, lineHeight: 1.4 }}>
-            Used to fetch local weather and adjust outfit recommendations.
+        {/* RIGHT — sections stacked */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Account */}
+          <div className="bru-card">
+            <div className="bru-mono">ACCOUNT</div>
+            <div className="bru-serif" style={{ fontSize: 22, marginTop: 4 }}>Your details</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+              <div>
+                <label className="bru-label">Name</label>
+                <input className="bru-input" value={account.name} onChange={e => setAccount({ ...account, name: e.target.value })} />
+              </div>
+              <div>
+                <label className="bru-label">E-mail</label>
+                <input className="bru-input" value={account.email} onChange={e => setAccount({ ...account, email: e.target.value })} />
+              </div>
+            </div>
+            <button className="bru-btn bru-btn-accent" style={{ marginTop: 12 }} onClick={saveAccount} disabled={accountSaving}>
+              {accountSaving ? 'Saving…' : 'Save account'}
+            </button>
+            <Msg msg={accountMsg} />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ position: 'relative' }}>
-              <label style={{ fontSize: 12, color: '#666', marginBottom: 4, display: 'block' }}>City</label>
-              <input
-                placeholder="Start typing — e.g. Almaty"
-                value={location.city}
+
+          {/* Location */}
+          <div className="bru-card">
+            <div className="bru-mono">CITY</div>
+            <div className="bru-serif" style={{ fontSize: 22, marginTop: 4 }}>Where you wear it</div>
+            <div style={{ position: 'relative', marginTop: 12 }}>
+              <input className="bru-input" placeholder="Type a city…" value={location.city}
                 onChange={e => handleCityInput(e.target.value)}
-                onBlur={() => setTimeout(() => setCitySuggestions([]), 150)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && citySuggestions.length > 0) {
-                    e.preventDefault()
-                    pickSuggestion(citySuggestions[0])
-                  }
-                }}
-                style={INPUT_STYLE}
-              />
+                onKeyDown={e => { if (e.key === 'Enter' && citySuggestions[0]) pickSuggestion(citySuggestions[0]) }} />
               {citySuggestions.length > 0 && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0,
-                  background: '#fff', borderRadius: 8, marginTop: 4,
-                  border: '1px solid #e5e5e5', zIndex: 20, overflow: 'hidden',
-                  boxShadow: '0 4px 12px rgba(0,0,0,.08)',
-                }}>
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--paper)', border: '1.5px solid var(--ink)', borderTop: 'none', maxHeight: 200, overflow: 'auto', zIndex: 10 }}>
                   {citySuggestions.map((s, i) => (
-                    <div
-                      key={i}
-                      onMouseDown={() => pickSuggestion(s)}
-                      style={{
-                        padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#333',
-                        borderBottom: i < citySuggestions.length - 1 ? '1px solid #f0f0f0' : 'none',
-                        background: i === 0 ? '#eff6ff' : '#fff',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
-                      onMouseLeave={e => e.currentTarget.style.background = i === 0 ? '#eff6ff' : '#fff'}
-                    >
-                      {s.name}{s.state ? `, ${s.state}` : ''}, {s.country}
-                      {i === 0 && (
-                        <span style={{ float: 'right', color: '#6b7280', fontSize: 11 }}>↵ Enter</span>
-                      )}
+                    <div key={i} onClick={() => pickSuggestion(s)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }}>
+                      <strong>{s.name}</strong>
+                      {s.state && <span style={{ color: 'var(--mute)' }}> · {s.state}</span>}
+                      <span style={{ color: 'var(--mute)' }}> · {s.country}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            {locMsg && (
-              <div className={`alert alert-${locMsg.type === 'success' ? 'success' : 'error'}`}>
-                {locMsg.text}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                className="btn btn-secondary"
-                style={{ height: 40, fontSize: 14, flex: 1 }}
-                onClick={useMyLocation}
-                disabled={geoLoading}
-              >
-                {geoLoading ? 'Detecting…' : '📍 Use my location'}
+            <div className="bru-mono" style={{ fontSize: 9, marginTop: 6, color: 'var(--mute)', textTransform: 'none', letterSpacing: '0.04em' }}>
+              Weather is fetched from OpenWeather based on this city. Press Enter to pick the first suggestion.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button className="bru-btn" onClick={useMyLocation} disabled={geoLoading}>
+                {geoLoading ? '…' : '📍 Detect'}
               </button>
-              <button
-                className="btn btn-primary"
-                style={{ height: 40, fontSize: 14, flex: 1 }}
-                onClick={saveLocation}
-                disabled={locSaving}
-              >
-                {locSaving ? 'Saving…' : 'Save Location'}
+              <button className="bru-btn bru-btn-accent" onClick={saveLocation} disabled={locSaving}>
+                {locSaving ? 'Saving…' : 'Save city'}
               </button>
             </div>
+            <Msg msg={locMsg} />
           </div>
-        </Section>
-      </div>
 
-      {/* Change Password */}
-      <div className="card" style={{ padding: 28, marginBottom: 20 }}>
-        <Section title="Change Password">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <input
-              type="password"
-              placeholder="Current password"
-              value={pwd.current_password}
-              onChange={e => setPwd(p => ({ ...p, current_password: e.target.value }))}
-              style={INPUT_STYLE}
-            />
-            <input
-              type="password"
-              placeholder="New password (min. 6 chars)"
-              value={pwd.new_password}
-              onChange={e => setPwd(p => ({ ...p, new_password: e.target.value }))}
-              style={INPUT_STYLE}
-            />
-            <input
-              type="password"
-              placeholder="Confirm new password"
-              value={pwd.confirm_password}
-              onChange={e => setPwd(p => ({ ...p, confirm_password: e.target.value }))}
-              style={INPUT_STYLE}
-            />
-            {pwdMsg && (
-              <div className={`alert alert-${pwdMsg.type === 'success' ? 'success' : 'error'}`}>
-                {pwdMsg.text}
-              </div>
-            )}
-            <button
-              className="btn btn-primary"
-              style={{ height: 40, fontSize: 14 }}
-              onClick={changePassword}
-              disabled={
-                pwdSaving ||
-                !pwd.current_password ||
-                !pwd.new_password ||
-                !pwd.confirm_password
-              }
-            >
-              {pwdSaving ? 'Changing…' : 'Change Password'}
-            </button>
+          {/* Style preferences */}
+          <div className="bru-card">
+            <div className="bru-mono">STYLE PROFILE</div>
+            <div className="bru-serif" style={{ fontSize: 22, marginTop: 4 }}>How you like to dress</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+              {STYLES_LIST.map(s => (
+                <span key={s} onClick={() => toggle('styles', s)} className={'bru-tag' + (has('styles', s) ? ' on' : '')} style={{ cursor: 'pointer' }}>{s}</span>
+              ))}
+            </div>
           </div>
-        </Section>
-      </div>
 
-      <div className="card" style={{ padding: 28 }}>
-
-        {/* Styles */}
-        <Section title="Preferred Styles">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {STYLES_LIST.map(s => (
-              <button
-                key={s}
-                onClick={() => toggle('styles', s)}
-                style={{
-                  padding: '8px 0', borderRadius: 20, fontSize: 13,
-                  fontWeight: 500, cursor: 'pointer', transition: 'all .15s',
-                  border: has('styles', s) ? '1.5px solid #1a1a1a' : '1.5px solid #e5e5e5',
-                  background: has('styles', s) ? '#1a1a1a' : '#fafafa',
-                  color:      has('styles', s) ? '#fff'    : '#555',
-                  textTransform: 'capitalize', textAlign: 'center',
-                }}
-              >{s}</button>
-            ))}
+          {/* Favourite colours */}
+          <div className="bru-card">
+            <div className="bru-mono">FAVOURITE COLOURS</div>
+            <div className="bru-mono" style={{ fontSize: 9, marginTop: 4, color: 'var(--mute)', textTransform: 'none', letterSpacing: '0.04em' }}>
+              Outfits with these colours get a bonus.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 6, marginTop: 12 }}>
+              {COLORS.map(([name, hex]) => {
+                const on = has('favorite_colors', name)
+                return (
+                  <div key={name} onClick={() => toggle('favorite_colors', name)} title={name}
+                    style={{ aspectRatio: '1', background: hex, cursor: 'pointer', border: '1.5px solid var(--ink)',
+                      boxShadow: on ? 'inset 0 0 0 3px var(--accent)' : 'none',
+                      display: 'grid', placeItems: 'center', color: LIGHT_COLORS.includes(name) ? '#000' : '#fff',
+                      fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fontWeight: 700 }}>
+                    {on ? '✓' : ''}
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </Section>
 
-        <div style={{ height: 1, background: '#f0f0f0', margin: '4px 0 28px' }} />
-
-        {/* Favourite colours */}
-        <Section title="Favourite Colours">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 10 }}>
-            {COLORS.map(c => (
-              <div key={c} title={c} onClick={() => toggle('favorite_colors', c)}
-                style={{ position: 'relative', cursor: 'pointer', aspectRatio: '1' }}>
-                <div style={{
-                  width: '100%', height: '100%', borderRadius: '50%',
-                  background: COLOR_HEX[c] || '#ccc',
-                  border: `3px solid ${has('favorite_colors', c) ? '#1a1a1a' : '#e5e5e5'}`,
-                  boxSizing: 'border-box',
-                  transition: 'border-color .1s',
-                }} />
-                {has('favorite_colors', c) && (
-                  <div style={{
-                    position: 'absolute', inset: 0, display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                    fontSize: 13, fontWeight: 700,
-                    color: ['white','beige','yellow','sky blue'].includes(c) ? '#333' : '#fff',
-                  }}>✓</div>
-                )}
-              </div>
-            ))}
+          {/* Disliked colours */}
+          <div className="bru-card">
+            <div className="bru-mono">DISLIKED COLOURS</div>
+            <div className="bru-mono" style={{ fontSize: 9, marginTop: 4, color: 'var(--mute)', textTransform: 'none', letterSpacing: '0.04em' }}>
+              Outfits with these colours rank lower.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 6, marginTop: 12 }}>
+              {COLORS.map(([name, hex]) => {
+                const on = has('disliked_colors', name)
+                return (
+                  <div key={name} onClick={() => toggle('disliked_colors', name)} title={name}
+                    style={{ aspectRatio: '1', background: hex, cursor: 'pointer', border: '1.5px solid var(--ink)',
+                      opacity: on ? 1 : 0.35,
+                      boxShadow: on ? 'inset 0 0 0 3px var(--ink)' : 'none',
+                      display: 'grid', placeItems: 'center', color: LIGHT_COLORS.includes(name) ? '#000' : '#fff',
+                      fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fontWeight: 700 }}>
+                    {on ? '✕' : ''}
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </Section>
 
-        <div style={{ height: 1, background: '#f0f0f0', margin: '4px 0 28px' }} />
+          {/* Recommendation tuning */}
+          <div className="bru-card">
+            <div className="bru-mono">RECOMMENDATION TUNING</div>
+            <div className="bru-serif" style={{ fontSize: 22, marginTop: 4 }}>How outfits get picked</div>
 
-        {/* Disliked colours */}
-        <Section title="Disliked Colours">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 10 }}>
-            {COLORS.map(c => (
-              <div key={c} title={c} onClick={() => toggle('disliked_colors', c)}
-                style={{ position: 'relative', cursor: 'pointer', aspectRatio: '1' }}>
-                <div style={{
-                  width: '100%', height: '100%', borderRadius: '50%',
-                  background: COLOR_HEX[c] || '#ccc',
-                  border: `3px solid ${has('disliked_colors', c) ? '#dc2626' : '#e5e5e5'}`,
-                  boxSizing: 'border-box',
-                  opacity: has('disliked_colors', c) ? 1 : 0.45,
-                  transition: 'border-color .1s, opacity .1s',
-                }} />
-                {has('disliked_colors', c) && (
-                  <div style={{
-                    position: 'absolute', inset: 0, display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                    fontSize: 13, fontWeight: 700,
-                    color: ['white','beige','yellow','sky blue'].includes(c) ? '#333' : '#fff',
-                  }}>✕</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </Section>
-
-        <div style={{ height: 1, background: '#f0f0f0', margin: '4px 0 28px' }} />
-
-        {/* Thermal sensitivity */}
-        <Section title="Thermal Sensitivity">
-          <div style={{ display: 'flex', gap: 10 }}>
-            {[
-              { v: 'cold',   label: 'Cold',   emoji: '🥶', desc: 'I feel cold easily' },
-              { v: 'normal', label: 'Normal',  emoji: '😊', desc: 'Average sensitivity' },
-              { v: 'hot',    label: 'Warm',    emoji: '🥵', desc: 'I run hot' },
-            ].map(({ v, label, emoji, desc }) => {
-              const active = prefs.heat_sensitivity === v
-              return (
-                <div
-                  key={v}
-                  onClick={() => setPrefs(p => ({ ...p, heat_sensitivity: v }))}
-                  style={{
-                    flex: 1, padding: '12px 8px', borderRadius: 10, cursor: 'pointer',
-                    textAlign: 'center', transition: 'all .15s',
-                    border: `2px solid ${active ? '#1a1a1a' : '#e5e5e5'}`,
-                    background: active ? '#1a1a1a' : '#fafafa',
-                    color: active ? '#fff' : '#555',
-                  }}
-                >
-                  <div style={{ fontSize: 22, marginBottom: 4 }}>{emoji}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-                  <div style={{ fontSize: 11, opacity: .7, marginTop: 2 }}>{desc}</div>
-                </div>
-              )
-            })}
-          </div>
-        </Section>
-
-        <div style={{ height: 1, background: '#f0f0f0', margin: '4px 0 28px' }} />
-
-        {/* Layering */}
-        <Section title="Outfit Layering">
-          <div style={{ display: 'flex', gap: 10 }}>
-            {[
-              { v: true,  label: 'Allow layering',  emoji: '🧥', desc: 'Mid + outer layers' },
-              { v: false, label: 'Single layer',     emoji: '👕', desc: 'One piece per slot' },
-            ].map(({ v, label, emoji, desc }) => {
-              const active = prefs.allow_layering === v
-              return (
-                <div
-                  key={String(v)}
-                  onClick={() => setPrefs(p => ({ ...p, allow_layering: v }))}
-                  style={{
-                    flex: 1, padding: '12px 8px', borderRadius: 10, cursor: 'pointer',
-                    textAlign: 'center', transition: 'all .15s',
-                    border: `2px solid ${active ? '#1a1a1a' : '#e5e5e5'}`,
-                    background: active ? '#1a1a1a' : '#fafafa',
-                    color: active ? '#fff' : '#555',
-                  }}
-                >
-                  <div style={{ fontSize: 22, marginBottom: 4 }}>{emoji}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-                  <div style={{ fontSize: 11, opacity: .7, marginTop: 2 }}>{desc}</div>
-                </div>
-              )
-            })}
-          </div>
-        </Section>
-
-        {saved && (
-          <div className="alert alert-success" style={{ marginBottom: 16 }}>
-            Preferences saved!
-          </div>
-        )}
-
-        {prefsDirty && !saved && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
-            padding: '8px 12px', borderRadius: 8,
-            background: '#fef3c7', color: '#92400e', fontSize: 13, fontWeight: 500,
-          }}>
-            <span style={{ fontSize: 14 }}>●</span>
-            Unsaved changes — don't forget to click Save.
-          </div>
-        )}
-
-        <button
-          className="btn btn-primary w-full"
-          style={{ height: 44, fontSize: 15 }}
-          onClick={save}
-          disabled={saving || !prefsDirty}
-        >
-          {saving ? 'Saving…' : prefsDirty ? 'Save Preferences' : 'Saved'}
-        </button>
-      </div>
-
-      {/* Danger Zone */}
-      <div className="card" style={{ padding: 28, marginTop: 20, border: '1px solid #fecaca' }}>
-        <Section title="Danger Zone">
-          <div style={{ fontSize: 13, color: '#666', marginBottom: 12, lineHeight: 1.5 }}>
-            Permanently delete your account along with all clothes, outfits, history and preferences.
-            This cannot be undone.
-          </div>
-          {!deleteOpen ? (
-            <button
-              className="btn btn-danger"
-              style={{ height: 40, fontSize: 14 }}
-              onClick={() => { setDeleteOpen(true); setDeleteMsg(null) }}
-            >
-              Delete Account
-            </button>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <input
-                type="password"
-                placeholder="Confirm with your password"
-                value={deletePwd}
-                onChange={e => setDeletePwd(e.target.value)}
-                style={INPUT_STYLE}
-                autoFocus
-              />
-              {deleteMsg && (
-                <div className={`alert alert-${deleteMsg.type === 'success' ? 'success' : 'error'}`}>
-                  {deleteMsg.text}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  className="btn btn-secondary"
-                  style={{ flex: 1, height: 40, fontSize: 14 }}
-                  onClick={() => { setDeleteOpen(false); setDeletePwd(''); setDeleteMsg(null) }}
-                  disabled={deleteBusy}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-danger"
-                  style={{ flex: 1, height: 40, fontSize: 14 }}
-                  onClick={deleteAccount}
-                  disabled={deleteBusy || !deletePwd}
-                >
-                  {deleteBusy ? 'Deleting…' : 'Permanently Delete'}
-                </button>
+            <div style={{ marginTop: 12 }}>
+              <div className="bru-mono" style={{ fontSize: 9, marginBottom: 6 }}>THERMAL SENSITIVITY</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: '1.5px solid var(--ink)' }}>
+                {[
+                  { v: 'cold',   l: 'Cold-blooded',  d: 'Dress one notch warmer' },
+                  { v: 'normal', l: 'Average',       d: 'Use raw temperature' },
+                  { v: 'hot',    l: 'Heat-tolerant', d: 'Dress one notch cooler' },
+                ].map((opt, i) => (
+                  <button key={opt.v} onClick={() => setPrefs(p => ({ ...p, heat_sensitivity: opt.v }))}
+                    className={prefs.heat_sensitivity === opt.v ? 'bru-on-accent' : ''}
+                    style={{ padding: '10px 6px', cursor: 'pointer', border: 'none',
+                      borderLeft: i > 0 ? '1.5px solid var(--ink)' : 'none',
+                      background: prefs.heat_sensitivity === opt.v ? 'var(--accent)' : 'transparent',
+                      color: 'var(--ink)', fontFamily: 'inherit', textAlign: 'center' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{opt.l}</div>
+                    <div className="bru-mono" style={{ fontSize: 8, marginTop: 2, color: prefs.heat_sensitivity === opt.v ? 'var(--ink)' : 'var(--mute)', textTransform: 'none', letterSpacing: '0.04em' }}>{opt.d}</div>
+                  </button>
+                ))}
               </div>
             </div>
-          )}
-        </Section>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1.5px solid var(--ink)', padding: 12, marginTop: 14 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Allow layering</div>
+                <div className="bru-mono" style={{ fontSize: 9, marginTop: 2, color: 'var(--mute)' }}>ADD MID-LAYER &lt;18°C · OUTER &lt;10°C</div>
+              </div>
+              <button onClick={() => setPrefs(p => ({ ...p, allow_layering: !p.allow_layering }))}
+                style={{ width: 52, height: 28, padding: 0, border: '1.5px solid var(--ink)',
+                  background: prefs.allow_layering ? 'var(--accent)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
+                <span style={{ position: 'absolute', top: 2, left: prefs.allow_layering ? 26 : 2,
+                  width: 22, height: 22, background: 'var(--ink)', transition: 'left 0.18s ease' }} />
+              </button>
+            </div>
+
+            <button className="bru-btn bru-btn-accent" style={{ marginTop: 12 }} onClick={savePrefs} disabled={saving}>
+              {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save preferences'}
+            </button>
+          </div>
+
+          {/* Password */}
+          <div className="bru-card">
+            <div className="bru-mono">PASSWORD</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
+              <div>
+                <label className="bru-label">Current</label>
+                <input className="bru-input" type="password" value={pwd.current_password} onChange={e => setPwd({ ...pwd, current_password: e.target.value })} />
+              </div>
+              <div>
+                <label className="bru-label">New</label>
+                <input className="bru-input" type="password" value={pwd.new_password} onChange={e => setPwd({ ...pwd, new_password: e.target.value })} />
+              </div>
+              <div>
+                <label className="bru-label">Confirm</label>
+                <input className="bru-input" type="password" value={pwd.confirm_password} onChange={e => setPwd({ ...pwd, confirm_password: e.target.value })} />
+              </div>
+            </div>
+            <button className="bru-btn bru-btn-accent" style={{ marginTop: 12 }} onClick={changePassword} disabled={pwdSaving || !pwd.current_password || !pwd.new_password}>
+              {pwdSaving ? 'Changing…' : 'Change password'}
+            </button>
+            <Msg msg={pwdMsg} />
+          </div>
+
+          {/* Delete account */}
+          <div className="bru-card" style={{ borderLeft: '6px solid var(--accent)' }}>
+            <div className="bru-serif" style={{ fontSize: 22 }}>Delete account</div>
+            <div className="bru-mono" style={{ fontSize: 9, marginTop: 6, color: 'var(--mute)', textTransform: 'none', letterSpacing: '0.04em', lineHeight: 1.5 }}>
+              Permanently deletes your account, all wardrobe items, outfits, and preferences. Cannot be undone.
+            </div>
+            {!deleteOpen ? (
+              <button className="bru-btn" style={{ marginTop: 12, background: 'var(--ink)', color: 'var(--paper)' }} onClick={() => setDeleteOpen(true)}>
+                Delete account…
+              </button>
+            ) : (
+              <div style={{ marginTop: 12 }}>
+                <label className="bru-label">Type your password to confirm</label>
+                <input className="bru-input" type="password" value={deletePwd} onChange={e => setDeletePwd(e.target.value)} />
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button className="bru-btn" onClick={() => { setDeleteOpen(false); setDeletePwd(''); setDeleteMsg(null) }}>Cancel</button>
+                  <button className="bru-btn" style={{ background: 'var(--ink)', color: 'var(--paper)' }} onClick={deleteAccount} disabled={deleteBusy}>
+                    {deleteBusy ? 'Deleting…' : 'Confirm delete'}
+                  </button>
+                </div>
+                <Msg msg={deleteMsg} />
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
     </div>
   )

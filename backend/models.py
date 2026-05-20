@@ -179,8 +179,8 @@ class WardrobeItem(Base):
     category_ref = relationship("Category", back_populates="items")
     colour_ref   = relationship("Colour",   back_populates="items")
     material_ref = relationship("Material", back_populates="items")
-    styles       = relationship("Style",    secondary="wardrobe_item_styles")
-    outfit_entries = relationship("OutfitItem", back_populates="item")
+    styles       = relationship("Style",    secondary="wardrobe_item_styles", passive_deletes=True)
+    outfit_entries = relationship("OutfitItem", back_populates="item", passive_deletes=True, cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_wardrobe_items_user_id", "user_id"),

@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import api from '../api'
 
-const TABS = ['stats', 'users', 'ml-logs']
-
-const INPUT_STYLE = {
-  padding: '7px 10px', border: '1px solid #ddd', borderRadius: 6,
-  fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#fff',
-}
+const TABS = [
+  { id: 'stats',   label: 'OVERVIEW' },
+  { id: 'users',   label: 'USERS' },
+  { id: 'ml-logs', label: 'ML LOGS' },
+]
 
 const EMPTY_FILTERS = {
   q: '', role: 'all', status: 'all',
@@ -58,7 +57,7 @@ export default function Admin() {
   const toggleSort = key => setSort(s =>
     s.key === key
       ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
-      : { key, dir: key === 'created_at' || key === 'item_count' ? 'asc' : 'asc' }
+      : { key, dir: 'asc' }
   )
 
   const sortValue = (u, key) => {
@@ -93,141 +92,159 @@ export default function Admin() {
     return 0
   })
 
-  const thStyle = {
-    textAlign: 'left', padding: '8px 12px',
-    fontWeight: 600, fontSize: 13,
-    borderBottom: '2px solid #eee',
+  const th = {
+    textAlign: 'left', padding: '8px 10px',
+    fontFamily: 'JetBrains Mono, monospace', fontSize: 9,
+    letterSpacing: '0.15em', textTransform: 'uppercase',
+    borderBottom: '2px solid var(--ink)', color: 'var(--mute)',
+    background: 'var(--paper)',
   }
-  const tdStyle = { padding: '8px 12px', fontSize: 13, verticalAlign: 'middle' }
+  const td = { padding: '8px 10px', fontSize: 12, verticalAlign: 'middle', borderBottom: '1px solid var(--line-soft)' }
 
   return (
-    <div className="page">
-      <h1>Admin Panel</h1>
-
-      {/* Tab bar */}
-      <div className="flex gap-8 mb-16">
-        {TABS.map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`btn btn-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ textTransform: 'capitalize' }}
-          >
-            {t.replace('-', ' ')}
-          </button>
-        ))}
+    <div className="bru-page">
+      <div style={{ borderBottom: '2px solid var(--ink)', paddingBottom: 14, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <div>
+          <div className="bru-mono">ADMIN</div>
+          <div className="bru-serif" style={{ fontSize: 64, lineHeight: 0.95 }}>The <em style={{ color: 'var(--accent)' }}>console</em>.</div>
+        </div>
+        <div className="bru-mono" style={{ fontSize: 10, color: 'var(--mute)' }}>
+          {loading ? 'LOADING…' : `${users.length} USERS · ${logs.length} ML EVENTS`}
+        </div>
       </div>
 
-      {loading && <p className="text-gray">Loading…</p>}
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 0, marginTop: 18, border: '1.5px solid var(--ink)' }}>
+        {TABS.map((t, i) => {
+          const active = tab === t.id
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={active ? 'bru-on-accent' : ''}
+              style={{
+                flex: 1, padding: '12px 14px',
+                borderLeft: i > 0 ? '1.5px solid var(--ink)' : 'none',
+                background: active ? 'var(--accent)' : 'var(--paper)',
+                color: active ? '#0A0A0A' : 'var(--ink)',
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+                letterSpacing: '0.2em', cursor: 'pointer',
+              }}
+            >
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
 
-      {/* ─── Stats ─────────────────────────────────────────────────────────── */}
+      {loading && (
+        <div className="bru-mono" style={{ marginTop: 24, color: 'var(--mute)' }}>LOADING…</div>
+      )}
+
+      {/* ── Stats ── */}
       {!loading && tab === 'stats' && stats && (
         <>
-          <div className="grid grid-3" style={{ marginBottom: 24 }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 0, border: '1.5px solid var(--ink)', marginTop: 18,
+          }}>
             {[
-              ['Total Users',      stats.total_users],
-              ['New (7 days)',      stats.new_users_7d],
-              ['Total Items',       stats.total_items],
-              ['Outfits (30 days)', stats.total_outfits_30d],
-              ['ML Avg Confidence', `${(stats.avg_ml_confidence * 100).toFixed(0)}%`],
-              ['ML Log Entries',    stats.total_ml_logs],
-            ].map(([label, val]) => (
-              <div key={label} className="card text-center">
-                <div style={{ fontSize: 32, fontWeight: 700, marginBottom: 4 }}>{val}</div>
-                <div className="text-sm text-gray">{label}</div>
+              ['TOTAL USERS',      stats.total_users],
+              ['NEW · 7 DAYS',     stats.new_users_7d],
+              ['TOTAL ITEMS',      stats.total_items],
+              ['OUTFITS · 30D',    stats.total_outfits_30d],
+              ['ML AVG CONFIDENCE',`${(stats.avg_ml_confidence * 100).toFixed(0)}%`],
+              ['ML LOG ENTRIES',   stats.total_ml_logs],
+            ].map(([label, val], i) => (
+              <div key={label} style={{
+                padding: 18,
+                borderLeft: (i % 3 !== 0) ? '1.5px solid var(--ink)' : 'none',
+                borderTop:  (i >= 3) ? '1.5px solid var(--ink)' : 'none',
+              }}>
+                <div className="bru-mono" style={{ fontSize: 9, color: 'var(--mute)' }}>{label}</div>
+                <div className="bru-serif" style={{ fontSize: 42, lineHeight: 1, marginTop: 4 }}>{val}</div>
               </div>
             ))}
           </div>
 
-          <div className="card">
-            <h3 style={{ marginBottom: 8 }}>System Status</h3>
-            <div className="flex gap-12 flex-wrap">
-              <span
-                className="tag"
-                style={{ background: '#dcfce7', color: '#16a34a', fontSize: 13 }}
-              >
-                Backend - online
-              </span>
-              <span
-                className="tag"
-                style={{ background: '#dcfce7', color: '#16a34a', fontSize: 13 }}
-              >
-                Database - connected
-              </span>
-              <span
-                className="tag"
-                style={{ background: '#dbeafe', color: '#2563eb', fontSize: 13 }}
-              >
-                ML Service — check http://localhost:8001/health
-              </span>
+          <div className="bru-card" style={{ marginTop: 18 }}>
+            <div className="bru-mono" style={{ marginBottom: 12 }}>SYSTEM STATUS</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <span className="bru-tag on">BACKEND · ONLINE</span>
+              <span className="bru-tag on">DATABASE · CONNECTED</span>
+              <span className="bru-tag">ML · CHECK :8001/HEALTH</span>
             </div>
           </div>
         </>
       )}
 
-      {/* ─── Users ─────────────────────────────────────────────────────────── */}
+      {/* ── Users ── */}
       {!loading && tab === 'users' && (
-        <div className="card" style={{ overflowX: 'auto' }}>
-
+        <div className="bru-card" style={{ marginTop: 18, overflowX: 'auto' }}>
           {/* Filters */}
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
-            marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f0f0f0',
+            paddingBottom: 12, marginBottom: 12, borderBottom: '1.5px solid var(--ink)',
           }}>
             <input
+              className="bru-input"
               placeholder="Search name or email…"
               value={filters.q}
               onChange={e => setF('q', e.target.value)}
-              style={{ ...INPUT_STYLE, flex: '1 1 220px', minWidth: 160 }}
+              style={{ flex: '1 1 220px', minWidth: 160 }}
             />
-            <select value={filters.role} onChange={e => setF('role', e.target.value)} style={INPUT_STYLE}>
+            <select className="bru-input" value={filters.role} onChange={e => setF('role', e.target.value)} style={{ width: 130 }}>
               <option value="all">All roles</option>
               <option value="admin">Admin</option>
               <option value="user">User</option>
             </select>
-            <select value={filters.status} onChange={e => setF('status', e.target.value)} style={INPUT_STYLE}>
+            <select className="bru-input" value={filters.status} onChange={e => setF('status', e.target.value)} style={{ width: 140 }}>
               <option value="all">All statuses</option>
               <option value="active">Active</option>
               <option value="blocked">Blocked</option>
             </select>
             <input
-              type="number" min="0" placeholder="Items ≥"
+              className="bru-input" type="number" min="0" placeholder="Items ≥"
               value={filters.minItems}
               onChange={e => setF('minItems', e.target.value)}
-              style={{ ...INPUT_STYLE, width: 90 }}
+              style={{ width: 90 }}
             />
             <input
-              type="number" min="0" placeholder="Items ≤"
+              className="bru-input" type="number" min="0" placeholder="Items ≤"
               value={filters.maxItems}
               onChange={e => setF('maxItems', e.target.value)}
-              style={{ ...INPUT_STYLE, width: 90 }}
+              style={{ width: 90 }}
             />
-            <label style={{ fontSize: 12, color: '#666' }}>From</label>
+            <label className="bru-mono" style={{ fontSize: 9, color: 'var(--mute)' }}>FROM</label>
             <input
-              type="date"
+              className="bru-input" type="date"
               value={filters.fromDate}
               onChange={e => setF('fromDate', e.target.value)}
-              style={INPUT_STYLE}
+              style={{ width: 140 }}
             />
-            <label style={{ fontSize: 12, color: '#666' }}>To</label>
+            <label className="bru-mono" style={{ fontSize: 9, color: 'var(--mute)' }}>TO</label>
             <input
-              type="date"
+              className="bru-input" type="date"
               value={filters.toDate}
               onChange={e => setF('toDate', e.target.value)}
-              style={INPUT_STYLE}
+              style={{ width: 140 }}
             />
             <button
-              className="btn btn-sm btn-secondary"
+              type="button"
+              className="bru-btn"
               onClick={() => setFilters(EMPTY_FILTERS)}
               disabled={JSON.stringify(filters) === JSON.stringify(EMPTY_FILTERS)}
+              style={{ height: 32, padding: '0 14px', fontSize: 11 }}
             >
               Reset
             </button>
           </div>
 
-          <div style={{ marginBottom: 12, fontSize: 13, color: '#666' }}>
-            Showing {filteredUsers.length} of {users.length} user{users.length !== 1 ? 's' : ''}
+          <div className="bru-mono" style={{ fontSize: 10, color: 'var(--mute)', marginBottom: 8 }}>
+            SHOWING {filteredUsers.length} OF {users.length} USER{users.length !== 1 ? 'S' : ''}
           </div>
+
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -247,75 +264,70 @@ export default function Admin() {
                       key={label}
                       onClick={() => key && toggleSort(key)}
                       style={{
-                        ...thStyle,
+                        ...th,
                         cursor: key ? 'pointer' : 'default',
+                        color: active ? 'var(--ink)' : 'var(--mute)',
                         userSelect: 'none',
-                        color: active ? '#1a1a1a' : '#555',
                       }}
                     >
                       {label}
-                      {active && (
-                        <span style={{ marginLeft: 4, fontSize: 11 }}>
-                          {sort.dir === 'asc' ? '▲' : '▼'}
-                        </span>
-                      )}
+                      {active && <span style={{ marginLeft: 4 }}>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
                     </th>
                   )
                 })}
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((u, i) => (
-                <tr key={u.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                  <td style={tdStyle}>{u.id}</td>
-                  <td style={tdStyle}>{u.name}</td>
-                  <td style={{ ...tdStyle, color: '#555' }}>{u.email}</td>
-                  <td style={tdStyle}>
+              {filteredUsers.map(u => (
+                <tr key={u.id}>
+                  <td style={{ ...td, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+                    {String(u.id).padStart(3, '0')}
+                  </td>
+                  <td style={td}>{u.name}</td>
+                  <td style={{ ...td, color: 'var(--mute)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+                    {u.email}
+                  </td>
+                  <td style={td}>
                     <span
-                      className="tag"
-                      style={{
-                        background: u.role === 'admin' ? '#1a1a1a' : '#f0f0f0',
-                        color: u.role === 'admin' ? '#fff' : '#555',
-                      }}
+                      className={u.role === 'admin' ? 'bru-tag on' : 'bru-tag'}
                     >
                       {u.role}
                     </span>
                   </td>
-                  <td style={tdStyle}>{u.item_count}</td>
-                  <td style={{ ...tdStyle, color: '#888' }}>
+                  <td style={{ ...td, fontFamily: 'JetBrains Mono, monospace' }}>{u.item_count}</td>
+                  <td style={{ ...td, color: 'var(--mute)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
                     {new Date(u.created_at).toLocaleDateString()}
                   </td>
-                  <td style={tdStyle}>
-                    <span
-                      className="tag"
-                      style={{
-                        background: u.is_active ? '#dcfce7' : '#fee2e2',
-                        color: u.is_active ? '#16a34a' : '#dc2626',
-                      }}
-                    >
-                      {u.is_active ? 'Active' : 'Blocked'}
-                    </span>
+                  <td style={td}>
+                    {u.is_active ? (
+                      <span className="bru-mono" style={{ fontSize: 10, color: 'var(--ink)' }}>● ACTIVE</span>
+                    ) : (
+                      <span className="bru-mono" style={{ fontSize: 10, color: 'var(--accent)' }}>○ BLOCKED</span>
+                    )}
                   </td>
-                  <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                    <div className="flex gap-8">
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
                       <button
-                        className="btn btn-sm btn-secondary"
+                        type="button"
+                        className="bru-btn"
                         onClick={() => toggleBlock(u)}
-                        title={u.is_active ? 'Block user' : 'Unblock user'}
+                        style={{ height: 26, padding: '0 8px', fontSize: 9 }}
                       >
                         {u.is_active ? 'Block' : 'Unblock'}
                       </button>
                       <button
-                        className="btn btn-sm btn-secondary"
+                        type="button"
+                        className="bru-btn"
                         onClick={() => toggleRole(u)}
-                        title="Toggle admin role"
+                        style={{ height: 26, padding: '0 8px', fontSize: 9 }}
                       >
                         {u.role === 'admin' ? '↓ User' : '↑ Admin'}
                       </button>
                       <button
-                        className="btn btn-sm btn-danger"
+                        type="button"
+                        className="bru-btn bru-btn-accent bru-on-accent"
                         onClick={() => deleteUser(u.id)}
-                        title="Delete user permanently"
+                        style={{ height: 26, padding: '0 10px', fontSize: 9 }}
                       >
                         Delete
                       </button>
@@ -325,8 +337,8 @@ export default function Admin() {
               ))}
               {filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: '#aaa', padding: 32 }}>
-                    No users match the current filters
+                  <td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--mute)', padding: 28 }}>
+                    <div className="bru-mono" style={{ fontSize: 10 }}>NO USERS MATCH THE CURRENT FILTERS</div>
                   </td>
                 </tr>
               )}
@@ -335,57 +347,55 @@ export default function Admin() {
         </div>
       )}
 
-      {/* ─── ML Logs ───────────────────────────────────────────────────────── */}
+      {/* ── ML Logs ── */}
       {!loading && tab === 'ml-logs' && (
-        <div className="card" style={{ overflowX: 'auto' }}>
-          <div style={{ marginBottom: 12, fontSize: 13, color: '#666' }}>
-            Last {logs.length} ML requests
+        <div className="bru-card" style={{ marginTop: 18, overflowX: 'auto' }}>
+          <div className="bru-mono" style={{ fontSize: 10, color: 'var(--mute)', marginBottom: 8 }}>
+            LAST {logs.length} ML REQUEST{logs.length !== 1 ? 'S' : ''}
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {['ID', 'User', 'Predicted Category', 'Confidence', 'Corrected', 'Date'].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
+                  <th key={h} style={th}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {logs.map((l, i) => (
-                <tr key={l.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                  <td style={tdStyle}>{l.id}</td>
-                  <td style={tdStyle}>{l.user_id}</td>
-                  <td style={tdStyle}>
-                    <span className="tag">{l.category || '—'}</span>
+              {logs.map(l => (
+                <tr key={l.id}>
+                  <td style={{ ...td, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+                    {String(l.id).padStart(4, '0')}
                   </td>
-                  <td style={tdStyle}>
+                  <td style={{ ...td, fontFamily: 'JetBrains Mono, monospace' }}>{l.user_id}</td>
+                  <td style={td}>
+                    <span className="bru-tag">{l.category || '—'}</span>
+                  </td>
+                  <td style={td}>
                     <span style={{
-                      fontWeight: 600,
-                      color: l.confidence == null ? '#aaa'
-                        : l.confidence < 0.5 ? '#dc2626'
-                        : l.confidence < 0.7 ? '#d97706'
-                        : '#16a34a',
+                      fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+                      color: l.confidence == null ? 'var(--mute)'
+                        : l.confidence < 0.5 ? 'var(--accent)'
+                        : l.confidence < 0.7 ? 'var(--ink)'
+                        : 'var(--ink)',
                     }}>
                       {l.confidence != null ? `${(l.confidence * 100).toFixed(0)}%` : '—'}
                     </span>
                   </td>
-                  <td style={tdStyle}>
-                    {l.corrected ? (
-                      <span className="tag" style={{ background: '#fef3c7', color: '#92400e' }}>
-                        ✏️ Yes
-                      </span>
-                    ) : (
-                      <span className="text-gray">No</span>
-                    )}
+                  <td style={td}>
+                    {l.corrected
+                      ? <span className="bru-tag on">CORRECTED</span>
+                      : <span className="bru-mono" style={{ fontSize: 10, color: 'var(--mute)' }}>—</span>}
                   </td>
-                  <td style={{ ...tdStyle, color: '#888' }}>
+                  <td style={{ ...td, color: 'var(--mute)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
                     {new Date(l.created_at).toLocaleString()}
                   </td>
                 </tr>
               ))}
               {logs.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#aaa', padding: 32 }}>
-                    No ML logs yet
+                  <td colSpan={6} style={{ ...td, textAlign: 'center', color: 'var(--mute)', padding: 28 }}>
+                    <div className="bru-mono" style={{ fontSize: 10 }}>NO ML LOGS YET</div>
                   </td>
                 </tr>
               )}

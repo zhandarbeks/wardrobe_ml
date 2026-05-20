@@ -25,10 +25,26 @@ const SUBCATEGORY_OPTIONS = {
 }
 
 const COLORS = [
-  'black', 'white', 'gray', 'navy', 'royal blue', 'sky blue',
-  'teal', 'green', 'olive', 'yellow', 'orange', 'red',
-  'burgundy', 'pink', 'purple', 'beige', 'brown', 'camel',
+  ['black',       '#1a1a1a'],
+  ['white',       '#f0f0f0'],
+  ['gray',        '#888888'],
+  ['navy',        '#0a1e50'],
+  ['royal blue',  '#4169e1'],
+  ['sky blue',    '#87ceeb'],
+  ['teal',        '#008080'],
+  ['green',       '#228b22'],
+  ['olive',       '#6b8e23'],
+  ['yellow',      '#ffd700'],
+  ['orange',      '#ff8c00'],
+  ['red',         '#c81e1e'],
+  ['burgundy',    '#800020'],
+  ['pink',        '#ff69b3'],
+  ['purple',      '#800080'],
+  ['beige',       '#e8dcc8'],
+  ['brown',       '#8b4513'],
+  ['camel',       '#c19a6b'],
 ]
+const LIGHT_COLORS = new Set(['white', 'beige', 'sky blue', 'yellow', 'pink'])
 
 const MATERIALS = [
   'cotton', 'wool', 'polyester', 'denim', 'leather',
@@ -108,7 +124,7 @@ function explainTempRange(category, subcategory, material) {
 
   let base = TEMP_BASE_RANGES[`${cat}|${sub}`]
   let baseLabel = sub ? `${cat} · ${sub}` : cat || 'unknown'
-  let baseHow   = 'exact_match'           // 'exact_match' | 'cross_category' | 'category_fallback' | 'global_fallback'
+  let baseHow   = 'exact_match'
   let baseFromKey = `${cat}|${sub}`
 
   if (!base && sub) {
@@ -259,7 +275,32 @@ export default function AddItem() {
   const [styleUserEdited, setStyleUserEdited] = useState(false)
   const [autoStyles,     setAutoStyles]      = useState([])
   const [pendingFile,    setPendingFile]     = useState(null)
+  const [dragOver,       setDragOver]        = useState(false)
+  const fileInputRef = useRef(null)
   const navigate = useNavigate()
+
+  const acceptFile = (file) => {
+    if (!file) return
+    if (!/^image\/(jpe?g|png|webp)$/i.test(file.type)) {
+      setError('Unsupported file type. Use JPEG, PNG or WebP.')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File too large. Max 10 MB.')
+      return
+    }
+    setError('')
+    setPendingFile(file)
+  }
+
+  const onDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }
+  const onDragEnter = (e) => { e.preventDefault(); setDragOver(true) }
+  const onDragLeave = (e) => { e.preventDefault(); setDragOver(false) }
+  const onDrop = (e) => {
+    e.preventDefault(); setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    acceptFile(file)
+  }
 
   const [autoSuggested, setAutoSuggested] = useState(deriveTempRange('top', '', ''))
   useEffect(() => {
@@ -280,9 +321,8 @@ export default function AddItem() {
 
   const onFileChange = (e) => {
     const file = e.target.files?.[0]
-    if (!file) return
-    setPendingFile(file)
     e.target.value = ''
+    acceptFile(file)
   }
 
   const onCropConfirm = async (blob) => {
@@ -357,61 +397,134 @@ export default function AddItem() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const lowConf = mlResult && mlResult.confidence < 0.7
+  const step = analyzing ? 3 : (mlResult || preview) ? 4 : 1
+  const displayImg = mlResult?.image_no_bg_url || preview
 
   return (
-    <div className="page">
-      <h1>Add Clothing Item</h1>
-
-      <div className="grid grid-2" style={{ gap: 24, alignItems: 'start' }}>
-
-        {/* Left — image upload + preview */}
+    <div className="bru-page">
+      <div style={{ borderBottom: '2px solid var(--ink)', paddingBottom: 14, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
         <div>
+          <div className="bru-mono">ACQUISITION</div>
+          <div className="bru-serif" style={{ fontSize: 64, lineHeight: 0.95 }}>Add a <em style={{ color: 'var(--accent)' }}>piece</em>.</div>
+        </div>
+        <div className="bru-mono" style={{ display: 'flex', gap: 0, border: '1.5px solid var(--ink)' }}>
+          {[
+            [1, 'UPLOAD'],
+            [2, 'CROP'],
+            [3, 'ANALYSE'],
+            [4, 'CONFIRM'],
+          ].map(([n, label], i) => {
+            const active = step === n
+            const past = step > n
+            return (
+              <div key={n} className={active ? 'bru-on-accent' : ''} style={{
+                padding: '8px 12px', fontSize: 9,
+                borderLeft: i > 0 ? '1.5px solid var(--ink)' : 'none',
+                background: active ? 'var(--accent)' : past ? 'var(--ink)' : 'var(--paper)',
+                color: active ? '#0A0A0A' : past ? 'var(--paper)' : 'var(--mute)',
+              }}>
+                {String(n).padStart(2, '0')} · {label}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 18, alignItems: 'start' }}>
+        {/* Left — image preview / drop zone */}
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={onFileChange}
+            style={{ display: 'none' }}
+          />
           <div
-            className="card"
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={onDragOver}
+            onDragEnter={onDragEnter}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            role="button"
+            tabIndex={0}
             style={{
-              textAlign: 'center', padding: 24, marginBottom: 12,
-              minHeight: 260, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+              background: dragOver ? 'var(--accent)' : 'var(--ink)',
+              position: 'relative', minHeight: 380,
+              border: `${dragOver ? 3 : 1.5}px ${dragOver ? 'dashed' : 'solid'} var(--ink)`,
+              transition: 'background 0.12s',
             }}
           >
-            {preview ? (
-              <img
-                src={mlResult?.image_no_bg_url || preview}
-                alt="preview"
-                style={{ maxWidth: '100%', maxHeight: 300, objectFit: 'contain', borderRadius: 8 }}
-              />
-            ) : (
-              <div style={{
-                width: '100%', height: 220, border: '2px dashed #ddd', borderRadius: 10,
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', color: '#aaa',
-              }}>
-                <div style={{ marginTop: 10, fontSize: 14 }}>Upload a photo of your garment</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>JPEG / PNG / WebP · max 10 MB</div>
+            <div style={{ minHeight: 380, display: 'grid', placeItems: 'center' }}>
+            {displayImg ? (
+              <img src={displayImg} alt="preview" style={{ maxWidth: '100%', maxHeight: 420, objectFit: 'contain' }} />
+            ) : dragOver ? (
+              <div className="bru-on-accent" style={{ textAlign: 'center', padding: 30 }}>
+                <div className="bru-serif" style={{ fontSize: 42, lineHeight: 1, color: '#0A0A0A' }}>Drop it.</div>
+                <div className="bru-mono" style={{ fontSize: 10, marginTop: 10, color: '#0A0A0A' }}>RELEASE TO UPLOAD</div>
               </div>
+            ) : (
+              <div style={{ textAlign: 'center', color: 'var(--paper)', padding: 30 }}>
+                <div className="bru-serif" style={{ fontSize: 36, lineHeight: 1 }}>Drag a photo here</div>
+                <div className="bru-mono" style={{ fontSize: 10, marginTop: 10, opacity: 0.6 }}>OR CLICK TO BROWSE</div>
+                <div className="bru-mono" style={{ fontSize: 9, marginTop: 6, opacity: 0.45 }}>JPEG · PNG · WEBP · MAX 10MB</div>
+              </div>
+            )}
+            </div>
+            {/* corner brackets */}
+            {[{t:10,l:10},{t:10,r:10},{b:10,r:10},{b:10,l:10}].map((c, i) => (
+              <svg key={i} width="20" height="20" viewBox="0 0 22 22" style={{ position: 'absolute', top: c.t, left: c.l, right: c.r, bottom: c.b, transform: `rotate(${i*90}deg)` }}>
+                <path d="M2 8 V2 H8" stroke="var(--accent)" strokeWidth="1.5" fill="none"/>
+              </svg>
+            ))}
+            {mlResult && !analyzing && (
+              <div className="bru-on-accent" style={{
+                position: 'absolute', top: 10, left: 10,
+                background: 'var(--accent)', color: '#0A0A0A',
+                padding: '4px 8px', fontFamily: 'JetBrains Mono, monospace',
+                fontSize: 9, letterSpacing: '0.18em',
+              }}>
+                AI · {(mlResult.confidence * 100).toFixed(0)}% CONFIDENT
+              </div>
+            )}
+            {analyzing && (
+              <div className="bru-on-accent" style={{
+                position: 'absolute', top: 10, left: 10,
+                background: 'var(--accent)', color: '#0A0A0A',
+                padding: '4px 8px', fontFamily: 'JetBrains Mono, monospace',
+                fontSize: 9, letterSpacing: '0.18em',
+              }}>ANALYSING…</div>
             )}
           </div>
 
-          <div style={{
-            fontSize: 12, color: '#555', background: '#fff8e1',
-            border: '1px solid #ffe49a', borderRadius: 6,
-            padding: '8px 10px', marginBottom: 8,
-          }}>
-            💡 Tip: photograph the item <strong>laid flat or on a hanger</strong> - not while wearing it.
-            Then crop tightly to the single garment for best recognition.
+          <div className="bru-mono" style={{ marginTop: 10, display: 'flex', gap: 14, fontSize: 9, color: 'var(--mute)' }}>
+            <span>↳ BG-REMOVED</span>
+            <span>NEURAL CLASSIFIER</span>
+            <span>{analyzing ? 'RUNNING' : mlResult ? 'OK' : 'IDLE'}</span>
           </div>
 
-          <label
-            className="btn btn-secondary"
-            style={{ display: 'block', textAlign: 'center', width: '100%', cursor: 'pointer' }}
+          <div style={{
+            marginTop: 12, padding: 10, border: '1.5px solid var(--line-soft)',
+            background: 'var(--paper)',
+          }}>
+            <div className="bru-mono" style={{ fontSize: 9, color: 'var(--mute)' }}>TIP</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              Photograph the item <strong>laid flat or on a hanger</strong> — not while worn. Then crop tightly for best recognition.
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="bru-btn bru-btn-accent bru-on-accent"
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              display: 'block', textAlign: 'center', width: '100%',
+              marginTop: 12, cursor: 'pointer', padding: '12px 0',
+            }}
           >
-            Choose Photo
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={onFileChange}
-              style={{ display: 'none' }}
-            />
-          </label>
+            {preview ? 'CHOOSE DIFFERENT PHOTO' : 'BROWSE FILES ⟶'}
+          </button>
 
           <CropModal
             file={pendingFile}
@@ -419,34 +532,30 @@ export default function AddItem() {
             onConfirm={onCropConfirm}
           />
 
-          {analyzing && (
-            <div className="alert alert-info mt-8">
-              Analysing — background removal + EfficientNetB2 classification
-            </div>
-          )}
-
-          {mlResult && !analyzing && (
-            <div className={`alert mt-8 ${lowConf ? 'alert-error' : 'alert-success'}`}>
-              {lowConf ? ' ' : ' '} ML complete — confidence: {(mlResult.confidence * 100).toFixed(0)}%
-              {lowConf && ' — low confidence, please verify the fields below'}
+          {error && (
+            <div className="bru-mono" style={{
+              marginTop: 10, padding: '10px 12px', fontSize: 10,
+              background: 'var(--accent)', color: '#0A0A0A',
+              border: '1.5px solid var(--ink)',
+            }}>
+              {error.toUpperCase()}
             </div>
           )}
         </div>
 
-        {/* Right — confirmation form */}
-        <div className="card">
-          <h3 style={{ marginBottom: 16 }}>
-            {mlResult ? 'Confirm / Adjust Attributes' : 'Item Attributes'}
-          </h3>
-
-          {error && <div className="alert alert-error">{error}</div>}
+        {/* Right — form */}
+        <div className="bru-card">
+          <div className="bru-mono" style={{ marginBottom: 14 }}>
+            {mlResult ? 'CONFIRM / ADJUST' : 'ATTRIBUTES'}
+            {lowConf && <span style={{ color: 'var(--accent)', marginLeft: 10 }}>· LOW CONFIDENCE · VERIFY</span>}
+          </div>
 
           <form onSubmit={save}>
-
-            {/* Name — required */}
-            <div className="form-group">
-              <label>Name *</label>
+            {/* Name */}
+            <div style={{ marginBottom: 14 }}>
+              <label className="bru-mono" style={{ fontSize: 9, display: 'block', marginBottom: 4 }}>NAME *</label>
               <input
+                className="bru-input"
                 value={form.name}
                 onChange={e => set('name', e.target.value)}
                 placeholder="e.g. Blue Columbia jacket"
@@ -454,14 +563,14 @@ export default function AddItem() {
               />
             </div>
 
-            {/* Category + Subcategory */}
-            <div className="grid grid-2" style={{ gap: 12 }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>
-                  Category *{' '}
-                  {lowConf && <span style={{ color: '#dc2626', fontSize: 11 }}>⚠ verify</span>}
+            {/* Category / Subcategory */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <div>
+                <label className="bru-mono" style={{ fontSize: 9, display: 'block', marginBottom: 4 }}>
+                  CATEGORY *
                 </label>
                 <select
+                  className="bru-input"
                   value={form.category}
                   onChange={e => { set('category', e.target.value); set('subcategory', '') }}
                 >
@@ -470,9 +579,10 @@ export default function AddItem() {
                   ))}
                 </select>
               </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Subcategory</label>
+              <div>
+                <label className="bru-mono" style={{ fontSize: 9, display: 'block', marginBottom: 4 }}>SUBCATEGORY</label>
                 <select
+                  className="bru-input"
                   value={form.subcategory}
                   onChange={e => set('subcategory', e.target.value)}
                 >
@@ -484,61 +594,89 @@ export default function AddItem() {
               </div>
             </div>
 
-            {/* Colour — required */}
-            <div className="form-group mt-16">
-              <label>
-                Colour *{' '}
-                {lowConf && <span style={{ color: '#dc2626', fontSize: 11 }}>⚠ verify</span>}
+            {/* Colour — swatch grid */}
+            <div style={{ marginBottom: 14 }}>
+              <label className="bru-mono" style={{ fontSize: 9, display: 'block', marginBottom: 4 }}>
+                COLOUR *{lowConf && <span style={{ color: 'var(--accent)', marginLeft: 8 }}>· VERIFY</span>}
               </label>
-              <select value={form.color} onChange={e => set('color', e.target.value)}>
-                {COLORS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            {/* Material — select from seeded values */}
-            <div className="form-group">
-              <label>Material</label>
-              <select value={form.material} onChange={e => set('material', e.target.value)}>
-                <option value="">— not specified —</option>
-                {MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-
-            {/* Brand */}
-            <div className="form-group">
-              <label>Brand</label>
-              <input
-                value={form.brand}
-                onChange={e => set('brand', e.target.value)}
-                placeholder="optional"
-              />
-            </div>
-
-            {/* Styles — auto-suggested from category/subcategory/material */}
-            <div className="form-group">
-              <label>Style</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-                {STYLES.map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => toggleStyle(s)}
-                    style={{
-                      padding: '4px 12px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
-                      border: '1px solid #ccc',
-                      background: activeStyles.includes(s) ? '#2563eb' : '#f3f4f6',
-                      color: activeStyles.includes(s) ? '#fff' : '#374151',
-                    }}
-                  >
-                    {s}
-                  </button>
-                ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 0 }}>
+                {COLORS.map(([name, hex]) => {
+                  const on = form.color === name
+                  const lightBg = LIGHT_COLORS.has(name)
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => set('color', name)}
+                      title={name}
+                      style={{
+                        aspectRatio: '1', background: hex,
+                        border: '1.5px solid var(--ink)', marginLeft: -1.5, marginTop: -1.5,
+                        cursor: 'pointer', position: 'relative',
+                        boxShadow: on ? 'inset 0 0 0 3px var(--accent)' : 'none',
+                        color: lightBg ? '#0A0A0A' : '#fff',
+                        display: 'grid', placeItems: 'center',
+                        fontSize: 14,
+                      }}
+                    >
+                      {on ? '✓' : ''}
+                    </button>
+                  )
+                })}
               </div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>
+              <div className="bru-mono" style={{ fontSize: 9, color: 'var(--mute)', marginTop: 6 }}>
+                SELECTED · {form.color.toUpperCase()}
+              </div>
+            </div>
+
+            {/* Material + Brand */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <div>
+                <label className="bru-mono" style={{ fontSize: 9, display: 'block', marginBottom: 4 }}>MATERIAL</label>
+                <select
+                  className="bru-input"
+                  value={form.material}
+                  onChange={e => set('material', e.target.value)}
+                >
+                  <option value="">— not specified —</option>
+                  {MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="bru-mono" style={{ fontSize: 9, display: 'block', marginBottom: 4 }}>BRAND</label>
+                <input
+                  className="bru-input"
+                  value={form.brand}
+                  onChange={e => set('brand', e.target.value)}
+                  placeholder="optional"
+                />
+              </div>
+            </div>
+
+            {/* Style chips */}
+            <div style={{ marginBottom: 14 }}>
+              <label className="bru-mono" style={{ fontSize: 9, display: 'block', marginBottom: 6 }}>STYLE</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {STYLES.map(s => {
+                  const on = activeStyles.includes(s)
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => toggleStyle(s)}
+                      className={'bru-tag' + (on ? ' on' : '')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {s}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="bru-mono" style={{ fontSize: 9, color: 'var(--mute)', marginTop: 6 }}>
                 {styleUserEdited ? (
                   <>
-                    Manual selection. Suggestion:{' '}
-                    <strong>{autoStyles.length ? autoStyles.join(', ') : 'none'}</strong>.{' '}
+                    MANUAL · SUGGESTION: {autoStyles.length ? autoStyles.join(', ').toUpperCase() : 'NONE'}
+                    {' · '}
                     <a
                       href="#"
                       onClick={e => {
@@ -546,39 +684,34 @@ export default function AddItem() {
                         setForm(f => ({ ...f, styles: autoStyles.join(',') }))
                         setStyleUserEdited(false)
                       }}
-                      style={{ color: '#2563eb', textDecoration: 'underline' }}
+                      style={{ color: 'var(--accent)', textDecoration: 'underline' }}
                     >
-                      reset to auto
+                      RESET
                     </a>
                   </>
                 ) : (
-                  <>
-                    Auto-suggested from{' '}
-                    <strong>{form.subcategory || form.category}</strong>
-                    {form.material ? <> · <strong>{form.material}</strong></> : null}.
-                    Click chips to customise.
-                  </>
+                  <>AUTO · FROM {(form.subcategory || form.category).toUpperCase()}{form.material ? ` · ${form.material.toUpperCase()}` : ''}</>
                 )}
               </div>
             </div>
 
-            {/* Temperature range — auto-derived from category/subcategory/material */}
-            <div style={{ position: 'relative' }}>
+            {/* Temperature range */}
+            <div style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Temperature range</span>
+                <label className="bru-mono" style={{ fontSize: 9 }}>WEARS AT (°C)</label>
                 <button
                   type="button"
                   onClick={() => setShowTempExplain(v => !v)}
                   title="Why these numbers?"
-                  aria-label="Why these numbers?"
+                  className={showTempExplain ? 'bru-on-accent' : ''}
                   style={{
-                    width: 18, height: 18, borderRadius: '50%',
-                    border: '1px solid #9ca3af', background: showTempExplain ? '#2563eb' : '#fff',
-                    color: showTempExplain ? '#fff' : '#6b7280',
-                    cursor: 'pointer', fontSize: 11, lineHeight: '16px',
-                    padding: 0, fontWeight: 700,
+                    width: 18, height: 18, border: '1.5px solid var(--ink)',
+                    background: showTempExplain ? 'var(--accent)' : 'var(--paper)',
+                    color: showTempExplain ? '#0A0A0A' : 'var(--ink)',
+                    cursor: 'pointer', fontSize: 11, lineHeight: '14px',
+                    padding: 0, fontFamily: 'JetBrains Mono, monospace',
                   }}
-                >ⓘ</button>
+                >?</button>
               </div>
 
               {showTempExplain && (() => {
@@ -591,50 +724,47 @@ export default function AddItem() {
                 }[ex.base.how]
                 return (
                   <div style={{
-                    border: '1px solid #d1d5db', background: '#f9fafb', borderRadius: 8,
-                    padding: 12, marginBottom: 10, fontSize: 12, color: '#374151',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+                    border: '1.5px solid var(--ink)', background: 'var(--paper)',
+                    padding: 12, marginBottom: 10, fontSize: 11,
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <strong style={{ fontSize: 13 }}>How we picked this range</strong>
-                      <button type="button" onClick={() => setShowTempExplain(false)}
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-                                       color: '#6b7280', fontSize: 14, lineHeight: 1, padding: 0 }}>
-                        ×
-                      </button>
+                      <strong className="bru-mono" style={{ fontSize: 10 }}>HOW WE PICKED THIS RANGE</strong>
+                      <button
+                        type="button"
+                        onClick={() => setShowTempExplain(false)}
+                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}
+                      >×</button>
                     </div>
                     <div style={{ marginTop: 8 }}>
                       <div>
-                        <strong>1. Base range:</strong>{' '}
-                        <code>{ex.base.min}°C / {ex.base.max}°C</code>
+                        <strong>1. Base:</strong>{' '}
+                        <code>{ex.base.min}° / {ex.base.max}°</code>
                       </div>
-                      <div style={{ marginLeft: 16, color: '#6b7280' }}>{baseMsg}</div>
+                      <div style={{ marginLeft: 12, color: 'var(--mute)', fontSize: 10 }}>{baseMsg}</div>
 
                       <div style={{ marginTop: 6 }}>
-                        <strong>2. Material modifier:</strong>{' '}
+                        <strong>2. Material:</strong>{' '}
                         {ex.material ? (
                           <>
                             <code>{ex.material.name}</code>
-                            {' shifts min by '}
-                            <code>{ex.material.minDelta >= 0 ? '+' : ''}{ex.material.minDelta}°C</code>
-                            {', max by '}
-                            <code>{ex.material.maxDelta >= 0 ? '+' : ''}{ex.material.maxDelta}°C</code>
+                            {' shifts min '}
+                            <code>{ex.material.minDelta >= 0 ? '+' : ''}{ex.material.minDelta}°</code>
+                            {', max '}
+                            <code>{ex.material.maxDelta >= 0 ? '+' : ''}{ex.material.maxDelta}°</code>
                           </>
                         ) : (
-                          <span style={{ color: '#6b7280' }}>none (no material selected, or material has no temperature impact)</span>
+                          <span style={{ color: 'var(--mute)' }}>none</span>
                         )}
                       </div>
 
-                      <div style={{
-                        marginTop: 8, paddingTop: 6, borderTop: '1px dashed #d1d5db',
-                      }}>
-                        <strong>3. Final range:</strong>{' '}
-                        <code style={{ background: '#dbeafe', padding: '1px 6px', borderRadius: 4 }}>
-                          {ex.final[0]}°C to {ex.final[1]}°C
+                      <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px dashed var(--line-soft)' }}>
+                        <strong>3. Final:</strong>{' '}
+                        <code className="bru-on-accent" style={{ background: 'var(--accent)', padding: '1px 6px', color: '#0A0A0A' }}>
+                          {ex.final[0]}° to {ex.final[1]}°
                         </code>
                         {ex.clamped && (
-                          <div style={{ marginLeft: 16, color: '#92400e' }}>
-                            (clamped to allowed bounds [{TEMP_BOUND_MIN}°, {TEMP_BOUND_MAX}°])
+                          <div style={{ marginLeft: 12, color: 'var(--mute)', fontSize: 10 }}>
+                            (clamped to bounds [{TEMP_BOUND_MIN}°, {TEMP_BOUND_MAX}°])
                           </div>
                         )}
                       </div>
@@ -643,19 +773,24 @@ export default function AddItem() {
                 )
               })()}
 
-              <div className="grid grid-2" style={{ gap: 12 }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label>Temp min (°C)</label>
+              <div style={{ border: '1.5px solid var(--ink)', padding: '12px 14px' }}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+                }}>
+                  <span>{form.temp_min}°</span>
+                  <span>{form.temp_max}°</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 }}>
                   <input
+                    className="bru-input"
                     type="number"
                     value={form.temp_min}
                     onChange={e => { set('temp_min', e.target.value); setTempUserEdited(true) }}
                     min={-40} max={40}
                   />
-                </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label>Temp max (°C)</label>
                   <input
+                    className="bru-input"
                     type="number"
                     value={form.temp_max}
                     onChange={e => { set('temp_max', e.target.value); setTempUserEdited(true) }}
@@ -663,43 +798,47 @@ export default function AddItem() {
                   />
                 </div>
               </div>
-            </div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-              {tempUserEdited ? (
-                <>
-                  Manual range. Suggestion for{' '}
-                  <strong>{form.subcategory || form.category}</strong>
-                  {form.material ? ` · ${form.material}` : ''}:{' '}
-                  <strong>{autoSuggested[0]}°C / {autoSuggested[1]}°C</strong>
-                  {' · '}
-                  <a
-                    href="#"
-                    onClick={e => {
-                      e.preventDefault()
-                      setForm(f => ({ ...f, temp_min: autoSuggested[0], temp_max: autoSuggested[1] }))
-                      setTempUserEdited(false)
-                    }}
-                    style={{ color: '#2563eb', textDecoration: 'underline' }}
-                  >
-                    reset to auto
-                  </a>
-                </>
-              ) : (
-                <>
-                  Auto-derived from <strong>{form.subcategory || form.category}</strong>
-                  {form.material ? <> · <strong>{form.material}</strong></> : null}
-                  . Edit either input to set a custom range.
-                </>
-              )}
+              <div className="bru-mono" style={{ fontSize: 9, color: 'var(--mute)', marginTop: 6 }}>
+                {tempUserEdited ? (
+                  <>
+                    MANUAL · SUGGESTION {autoSuggested[0]}° / {autoSuggested[1]}°
+                    {' · '}
+                    <a
+                      href="#"
+                      onClick={e => {
+                        e.preventDefault()
+                        setForm(f => ({ ...f, temp_min: autoSuggested[0], temp_max: autoSuggested[1] }))
+                        setTempUserEdited(false)
+                      }}
+                      style={{ color: 'var(--accent)', textDecoration: 'underline' }}
+                    >
+                      RESET
+                    </a>
+                  </>
+                ) : (
+                  <>AUTO · FROM {(form.subcategory || form.category).toUpperCase()}{form.material ? ` · ${form.material.toUpperCase()}` : ''}</>
+                )}
+              </div>
             </div>
 
-            <button
-              className="btn btn-primary w-full"
-              style={{ marginTop: 20 }}
-              disabled={saving || analyzing}
-            >
-              {saving ? 'Saving…' : 'Add to Wardrobe'}
-            </button>
+            <div style={{ display: 'flex', gap: 0, marginTop: 18 }}>
+              <button
+                type="button"
+                className="bru-btn"
+                style={{ flex: 1, borderRight: 'none' }}
+                onClick={() => navigate('/wardrobe')}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="bru-btn bru-btn-accent bru-on-accent"
+                style={{ flex: 2 }}
+                disabled={saving || analyzing}
+              >
+                {saving ? 'Saving…' : 'Add to Wardrobe ⟶'}
+              </button>
+            </div>
           </form>
         </div>
       </div>

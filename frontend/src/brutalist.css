@@ -1,0 +1,110 @@
+/* Brutalist editorial — Acid Lime · day/night
+   Production port from wardrobe-7. Differs from the design canvas in two ways:
+   (1) page chrome uses normal flow + sticky (not absolute), because we're inside
+       a real React Router app, not a 1280×880 artboard.
+   (2) Mobile breakpoints added at <768px. */
+
+:root {
+  --paper: #EDEAE3;
+  --ink: #0A0A0A;
+  --line-soft: #D7D2C5;
+  --accent: #6FA000;
+  --accent-bright: #C8FF1F;
+  --mute: #6B665B;
+}
+[data-mode="night"] {
+  --paper: #0A0A0A;
+  --ink: #EDEAE3;
+  --line-soft: #2A2A28;
+  --accent: #C8FF1F;
+  --mute: #908B7E;
+}
+
+html, body, #root { margin: 0; padding: 0; min-height: 100%; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: 'Geist', -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+
+/* ── Page chrome ───────────────────────────────────────────────── */
+.bru-mast {
+  padding: 18px 32px; border-bottom: 2px solid var(--ink);
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  background: var(--paper); position: sticky; top: 0; z-index: 50;
+}
+.bru-logo { font-family: 'Instrument Serif', serif; font-size: 26px; font-style: italic; }
+.bru-meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.10em; white-space: nowrap; }
+.bru-nav { display: flex; gap: 14px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; }
+.bru-nav a { color: var(--ink); cursor: pointer; padding-bottom: 2px; text-decoration: none; }
+.bru-nav a.is-active { border-bottom: 2px solid var(--accent); color: var(--ink); font-weight: 600; }
+
+.bru-sub {
+  padding: 7px 32px; border-bottom: 1px solid var(--ink);
+  display: flex; justify-content: space-between; gap: 16px;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--paper); position: sticky; top: 73px; z-index: 49;
+}
+.bru-sub span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.bru-page { padding: 32px; max-width: 1280px; margin: 0 auto; }
+
+/* ── Typography ────────────────────────────────────────────────── */
+.bru-mono { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; }
+.bru-serif { font-family: 'Instrument Serif', serif; font-weight: 400; letter-spacing: -0.015em; }
+
+/* ── Cards / rules / buttons ───────────────────────────────────── */
+.bru-rule { border-top: 1px solid var(--ink); }
+.bru-rule-thick { border-top: 2px solid var(--ink); }
+.bru-card { border: 1.5px solid var(--ink); padding: 18px; background: var(--paper); }
+.bru-btn {
+  height: 40px; padding: 0 22px; background: transparent;
+  border: 1.5px solid var(--ink);
+  font-size: 11px; letter-spacing: 0.20em; text-transform: uppercase;
+  cursor: pointer; color: var(--ink); font-family: inherit;
+  transition: background 0.12s;
+}
+.bru-btn:hover:not(:disabled) { background: var(--line-soft); }
+.bru-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.bru-btn-accent { background: var(--accent); border-color: var(--accent); color: var(--ink); font-weight: 700; }
+.bru-btn-accent:hover:not(:disabled) { background: var(--accent); filter: brightness(1.05); }
+[data-mode="night"] .bru-btn-accent { color: #0A0A0A; }
+
+/* ── Tags / chips ──────────────────────────────────────────────── */
+.bru-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border: 1px solid var(--ink); background: var(--paper);
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink); cursor: pointer;
+}
+.bru-tag.on { background: var(--ink); color: var(--paper); }
+
+/* ── Form inputs ───────────────────────────────────────────────── */
+.bru-input, .bru-select {
+  width: 100%; height: 40px; padding: 0 14px; background: var(--paper);
+  border: 1.5px solid var(--ink); font: inherit; font-size: 13px; color: var(--ink);
+  outline: none; border-radius: 0; font-family: inherit;
+}
+.bru-input:focus, .bru-select:focus { box-shadow: inset 0 0 0 1px var(--accent); }
+.bru-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 6px; display: block; color: var(--ink); }
+
+.bru-stage { background: var(--ink); display: grid; place-items: center; position: relative; }
+
+/* Text on accent (acid lime) is always dark — cream-on-lime is unreadable in night mode */
+.bru-on-accent, .bru-on-accent * { color: #0A0A0A !important; }
+
+/* ── Misc ──────────────────────────────────────────────────────── */
+.bru-scroll::-webkit-scrollbar { width: 4px; }
+.bru-scroll::-webkit-scrollbar-thumb { background: var(--line-soft); }
+
+/* ── Mobile responsive ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .bru-mast { padding: 14px 16px; flex-wrap: wrap; gap: 12px; }
+  .bru-mast .bru-logo { font-size: 22px; }
+  .bru-mast .bru-meta { display: none; }
+  .bru-nav { font-size: 10px; gap: 10px; flex-wrap: wrap; width: 100%; }
+  .bru-sub { padding: 6px 16px; font-size: 9px; top: 60px; flex-wrap: wrap; gap: 8px; }
+  .bru-page { padding: 16px; }
+  .bru-card { padding: 14px; }
+}

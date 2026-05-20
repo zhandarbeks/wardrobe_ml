@@ -24,55 +24,41 @@ const COLORS = [
   { id: 'brown',      hex: '#8b4513' },
   { id: 'camel',      hex: '#c19a6b' },
 ]
-const LIGHT = ['white', 'beige', 'yellow', 'sky blue']
+const LIGHT = new Set(['white', 'beige', 'yellow', 'sky blue', 'pink'])
 
 const STEPS = [
-  { label: 'Your Style',           hint: 'Pick the styles that best match your wardrobe.' },
-  { label: 'Favourite Colours',    hint: 'These colours get a bonus in outfit scoring.' },
-  { label: 'Colours You Dislike',  hint: 'Outfits with these colours will rank lower.' },
-  { label: 'Thermal Sensitivity',  hint: 'Adjusts temperature thresholds for outfit picks.' },
-  { label: 'Outfit Layering',      hint: 'Should the algorithm include layers like sweaters?' },
+  { kicker: '01', label: 'Your Style',          hint: 'Pick the styles that match your wardrobe.' },
+  { kicker: '02', label: 'Favourite Colours',   hint: 'These colours get a bonus in outfit scoring.' },
+  { kicker: '03', label: 'Disliked Colours',    hint: 'Outfits with these colours will rank lower.' },
+  { kicker: '04', label: 'Thermal Sensitivity', hint: 'Adjusts temperature thresholds for outfit picks.' },
+  { kicker: '05', label: 'Outfit Layering',     hint: 'Should the algorithm include layers like sweaters?' },
 ]
 
-function ColorGrid({ field, accent, symbol, isSelected, onToggle }) {
-  const COLS = Math.ceil(COLORS.length / 2)
+function ColorGrid({ field, symbol, isSelected, onToggle }) {
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-      gap: '14px 6px',
-      justifyItems: 'center',
-    }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 0 }}>
       {COLORS.map(({ id, hex }) => {
         const on = isSelected(field, id)
+        const lightBg = LIGHT.has(id)
         return (
-          <div
+          <button
             key={id}
+            type="button"
             onClick={() => onToggle(field, id)}
             title={id}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}
+            style={{
+              aspectRatio: '1', background: hex,
+              border: '1.5px solid var(--ink)', marginLeft: -1.5, marginTop: -1.5,
+              cursor: 'pointer', position: 'relative',
+              boxShadow: on ? 'inset 0 0 0 3px var(--accent)' : 'none',
+              color: lightBg ? '#0A0A0A' : '#fff',
+              display: 'grid', placeItems: 'center',
+              fontSize: 16, fontWeight: 700,
+              opacity: field === 'disliked_colors' && !on ? 0.55 : 1,
+            }}
           >
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: hex,
-              border: `2.5px solid ${on ? accent : '#e0e0e0'}`,
-              boxShadow: on ? `0 0 0 2px ${accent}33` : 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'border-color .12s, box-shadow .12s',
-              opacity: field === 'disliked_colors' && !on ? 0.42 : 1,
-            }}>
-              {on && (
-                <span style={{
-                  fontSize: 13, fontWeight: 700, lineHeight: 1,
-                  color: LIGHT.includes(id) ? '#333' : '#fff',
-                }}>{symbol}</span>
-              )}
-            </div>
-            <span style={{
-              fontSize: 9, color: '#aaa', textAlign: 'center',
-              textTransform: 'capitalize', lineHeight: 1.2, maxWidth: 44,
-            }}>{id}</span>
-          </div>
+            {on ? symbol : ''}
+          </button>
         )
       })}
     </div>
@@ -115,182 +101,211 @@ export default function Onboarding() {
 
   const TOTAL = STEPS.length
   const progress = ((step + 1) / TOTAL) * 100
+  const current = STEPS[step]
 
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      padding: '24px 16px', background: '#f5f5f5',
+      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '40px 16px', background: 'var(--paper)',
     }}>
-      <div style={{ width: '100%', maxWidth: 520 }}>
+      <div style={{ width: '100%', maxWidth: 640 }}>
+        {/* Brand */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 }}>
+          <div className="bru-mono" style={{ fontSize: 14, letterSpacing: '0.25em' }}>T*T</div>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="bru-mono"
+            style={{
+              fontSize: 10, color: 'var(--mute)', background: 'none',
+              border: 'none', cursor: 'pointer', letterSpacing: '0.15em',
+            }}
+          >
+            SKIP SETUP ⟶
+          </button>
+        </div>
 
-        {/* Progress bar + step counter */}
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#999', letterSpacing: '0.04em' }}>
-              Step {step + 1} / {TOTAL}
-            </span>
-            <span
-              onClick={() => navigate('/')}
-              style={{ fontSize: 12, color: '#bbb', cursor: 'pointer', userSelect: 'none' }}
-            >
-              Skip setup
-            </span>
+        {/* Progress */}
+        <div style={{ marginBottom: 14 }}>
+          <div className="bru-mono" style={{
+            display: 'flex', justifyContent: 'space-between',
+            fontSize: 10, marginBottom: 6, color: 'var(--mute)',
+          }}>
+            <span>STEP {String(step + 1).padStart(2, '0')} OF {String(TOTAL).padStart(2, '0')}</span>
+            <span>{Math.round(progress)}%</span>
           </div>
-          <div style={{ height: 3, background: '#e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ height: 4, background: 'var(--line-soft)', border: '1px solid var(--ink)' }}>
             <div style={{
-              height: '100%', background: '#1a1a1a', borderRadius: 2,
+              height: '100%', background: 'var(--accent)',
               width: `${progress}%`, transition: 'width .35s ease',
             }} />
           </div>
         </div>
 
         {/* Card */}
-        <div style={{
-          background: '#fff', borderRadius: 14,
-          boxShadow: '0 2px 16px rgba(0,0,0,0.09)',
-          padding: '28px 28px 24px',
-        }}>
-
-          {/* Step title */}
-          <div style={{ marginBottom: 22 }}>
-            <h2 style={{ margin: '0 0 5px', fontSize: 20, fontWeight: 700, color: '#1a1a1a' }}>
-              {STEPS[step].label}
-            </h2>
-            <p style={{ margin: 0, fontSize: 13, color: '#999', lineHeight: 1.5 }}>
-              {STEPS[step].hint}
-            </p>
+        <div className="bru-card" style={{ padding: '28px 30px 24px' }}>
+          <div style={{ borderBottom: '2px solid var(--ink)', paddingBottom: 14, marginBottom: 20 }}>
+            <div className="bru-mono">CALIBRATION · {current.kicker}</div>
+            <div className="bru-serif" style={{ fontSize: 44, lineHeight: 0.95, marginTop: 4 }}>
+              {current.label.split(' ').map((w, i, arr) => (
+                <span key={i}>
+                  {i === arr.length - 1 ? <em style={{ color: 'var(--accent)' }}>{w}</em> : w}
+                  {i < arr.length - 1 && ' '}
+                </span>
+              ))}
+              .
+            </div>
+            <div className="bru-mono" style={{ fontSize: 10, color: 'var(--mute)', marginTop: 8 }}>
+              {current.hint.toUpperCase()}
+            </div>
           </div>
 
-          {/* ── Step 1: Styles ── */}
+          {/* Step 1: Styles */}
           {step === 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {STYLES_LIST.map(s => {
                 const on = prefs.styles.includes(s)
                 return (
                   <button
                     key={s}
+                    type="button"
                     onClick={() => toggle('styles', s)}
-                    style={{
-                      padding: '10px 0', borderRadius: 20, fontSize: 13,
-                      fontWeight: 500, cursor: 'pointer', transition: 'all .15s',
-                      border: `1.5px solid ${on ? '#1a1a1a' : '#e5e5e5'}`,
-                      background: on ? '#1a1a1a' : '#fafafa',
-                      color: on ? '#fff' : '#555',
-                      textTransform: 'capitalize', textAlign: 'center',
-                    }}
-                  >{s}</button>
+                    className={'bru-tag' + (on ? ' on' : '')}
+                    style={{ cursor: 'pointer', fontSize: 11, padding: '8px 14px' }}
+                  >
+                    {s}
+                  </button>
                 )
               })}
             </div>
           )}
 
-          {/* ── Step 2: Favourite colours ── */}
+          {/* Step 2: Favourite */}
           {step === 1 && (
-            <ColorGrid field="favorite_colors" accent="#1a1a1a" symbol="✓"
-              isSelected={isSelected} onToggle={toggle} />
+            <ColorGrid field="favorite_colors" symbol="✓" isSelected={isSelected} onToggle={toggle} />
           )}
 
-          {/* ── Step 3: Disliked colours ── */}
+          {/* Step 3: Disliked */}
           {step === 2 && (
-            <ColorGrid field="disliked_colors" accent="#dc2626" symbol="✕"
-              isSelected={isSelected} onToggle={toggle} />
+            <ColorGrid field="disliked_colors" symbol="✕" isSelected={isSelected} onToggle={toggle} />
           )}
 
-          {/* ── Step 4: Thermal sensitivity ── */}
+          {/* Step 4: Heat sensitivity */}
           {step === 3 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, border: '1.5px solid var(--ink)' }}>
               {[
                 { v: 'cold',   label: 'Cold',   desc: 'Warmer thresholds' },
-                { v: 'normal', label: 'Normal',  desc: 'No adjustment' },
-                { v: 'hot',    label: 'Warm',    desc: 'Cooler thresholds' },
-              ].map(({ v, label, desc }) => {
+                { v: 'normal', label: 'Normal', desc: 'No adjustment' },
+                { v: 'hot',    label: 'Warm',   desc: 'Cooler thresholds' },
+              ].map(({ v, label, desc }, i) => {
                 const on = prefs.heat_sensitivity === v
                 return (
-                  <div key={v} onClick={() => setPrefs(p => ({ ...p, heat_sensitivity: v }))}
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setPrefs(p => ({ ...p, heat_sensitivity: v }))}
+                    className={on ? 'bru-on-accent' : ''}
                     style={{
-                      padding: '14px 10px', borderRadius: 10, cursor: 'pointer',
-                      textAlign: 'center', transition: 'all .15s',
-                      border: `1.5px solid ${on ? '#1a1a1a' : '#e5e5e5'}`,
-                      background: on ? '#1a1a1a' : '#fafafa',
-                      color: on ? '#fff' : '#555',
+                      padding: '18px 12px',
+                      borderLeft: i > 0 ? '1.5px solid var(--ink)' : 'none',
+                      background: on ? 'var(--accent)' : 'var(--paper)',
+                      color: on ? '#0A0A0A' : 'var(--ink)',
+                      cursor: 'pointer', textAlign: 'center',
                     }}
                   >
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
-                    <div style={{ fontSize: 11, opacity: .65, marginTop: 4, lineHeight: 1.3 }}>{desc}</div>
-                  </div>
+                    <div className="bru-serif" style={{ fontSize: 22, lineHeight: 1 }}>{label}</div>
+                    <div className="bru-mono" style={{ fontSize: 9, marginTop: 6, opacity: on ? 0.75 : 0.55 }}>
+                      {desc.toUpperCase()}
+                    </div>
+                  </button>
                 )
               })}
             </div>
           )}
 
-          {/* ── Step 5: Layering ── */}
+          {/* Step 5: Layering */}
           {step === 4 && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, border: '1.5px solid var(--ink)' }}>
               {[
-                { v: true,  label: 'Allow layering', desc: 'Include sweaters, hoodies and mid-layers in outfit suggestions' },
-                { v: false, label: 'Single layer',    desc: 'Base layer and bottoms only, no extra layers' },
-              ].map(({ v, label, desc }) => {
+                { v: true,  label: 'Allow layering', desc: 'Include sweaters, hoodies and mid-layers in outfits' },
+                { v: false, label: 'Single layer',   desc: 'Base layer and bottoms only, no extra layers' },
+              ].map(({ v, label, desc }, i) => {
                 const on = prefs.allow_layering === v
                 return (
-                  <div key={String(v)} onClick={() => setPrefs(p => ({ ...p, allow_layering: v }))}
+                  <button
+                    key={String(v)}
+                    type="button"
+                    onClick={() => setPrefs(p => ({ ...p, allow_layering: v }))}
+                    className={on ? 'bru-on-accent' : ''}
                     style={{
-                      padding: '16px 14px', borderRadius: 10, cursor: 'pointer',
-                      textAlign: 'center', transition: 'all .15s',
-                      border: `1.5px solid ${on ? '#1a1a1a' : '#e5e5e5'}`,
-                      background: on ? '#1a1a1a' : '#fafafa',
-                      color: on ? '#fff' : '#555',
+                      padding: '22px 16px',
+                      borderLeft: i > 0 ? '1.5px solid var(--ink)' : 'none',
+                      background: on ? 'var(--accent)' : 'var(--paper)',
+                      color: on ? '#0A0A0A' : 'var(--ink)',
+                      cursor: 'pointer', textAlign: 'left',
                     }}
                   >
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>{label}</div>
-                    <div style={{ fontSize: 11, opacity: .65, lineHeight: 1.4 }}>{desc}</div>
-                  </div>
+                    <div className="bru-serif" style={{ fontSize: 22, lineHeight: 1 }}>{label}</div>
+                    <div className="bru-mono" style={{ fontSize: 9, marginTop: 8, opacity: on ? 0.75 : 0.55, lineHeight: 1.4 }}>
+                      {desc.toUpperCase()}
+                    </div>
+                  </button>
                 )
               })}
             </div>
           )}
 
-          {/* Divider */}
-          <div style={{ height: 1, background: '#f0f0f0', margin: '24px 0 20px' }} />
-
-          {/* Navigation */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Footer nav */}
+          <div style={{ marginTop: 26, paddingTop: 18, borderTop: '2px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <button
+              type="button"
+              className="bru-btn"
               onClick={() => setStep(s => s - 1)}
               disabled={step === 0}
-              className="btn btn-secondary btn-sm"
-              style={{ visibility: step === 0 ? 'hidden' : 'visible' }}
+              style={{
+                visibility: step === 0 ? 'hidden' : 'visible',
+                height: 36, padding: '0 18px', fontSize: 11,
+              }}
             >
-              Back
+              ⟵ Back
             </button>
 
-            {/* Step dots */}
-            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               {STEPS.map((_, i) => (
                 <div key={i} style={{
-                  height: 6, borderRadius: 3, transition: 'all .25s',
-                  width: i === step ? 18 : 6,
-                  background: i < step ? '#1a1a1a' : i === step ? '#1a1a1a' : '#ddd',
+                  height: 6, background: i <= step ? 'var(--ink)' : 'var(--line-soft)',
+                  width: i === step ? 24 : 6,
+                  transition: 'width .25s',
                 }} />
               ))}
             </div>
 
             {step < TOTAL - 1 ? (
-              <button className="btn btn-primary btn-sm" onClick={() => setStep(s => s + 1)}>
-                Next
+              <button
+                type="button"
+                className="bru-btn bru-btn-accent bru-on-accent"
+                onClick={() => setStep(s => s + 1)}
+                style={{ height: 36, padding: '0 22px', fontSize: 11 }}
+              >
+                Next ⟶
               </button>
             ) : (
-              <button className="btn btn-primary btn-sm" onClick={finish} disabled={loading}>
-                {loading ? 'Saving…' : 'Finish'}
+              <button
+                type="button"
+                className="bru-btn bru-btn-accent bru-on-accent"
+                onClick={finish}
+                disabled={loading}
+                style={{ height: 36, padding: '0 22px', fontSize: 11 }}
+              >
+                {loading ? 'Saving…' : 'Finish ⟶'}
               </button>
             )}
           </div>
-
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 12, color: '#ccc', marginTop: 16 }}>
-          You can always change these in your Profile
-        </p>
+        <div className="bru-mono" style={{ textAlign: 'center', fontSize: 10, color: 'var(--mute)', marginTop: 16, letterSpacing: '0.15em' }}>
+          YOU CAN CHANGE THESE LATER IN PROFILE
+        </div>
       </div>
     </div>
   )

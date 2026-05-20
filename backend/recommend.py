@@ -316,7 +316,7 @@ async def ml_rescore_outfits(outfits: list, ml_url: str) -> list:
                     ml_avg = sum(scores) / len(scores)
                     bd = outfit.setdefault("score_breakdown", {})
                     bd["ml_compat"] = round(ml_avg, 3)
-                    bd["ml_pairs"]  = len(scores)
+                    bd["ml_pairs"]  = len(scores)      
                     outfit["score"] = _blend_final(bd)
     except Exception:
         pass
