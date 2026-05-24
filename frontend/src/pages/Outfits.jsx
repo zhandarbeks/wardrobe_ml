@@ -127,15 +127,27 @@ function OutfitCard({ outfit, onEdit, onDelete, onWorn }) {
           {new Date(outfit.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase()}
           {outfit.used_at && <> · WORN {new Date(outfit.used_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase()}</>}
         </div>
-        <div style={{ display: 'flex', marginTop: 12, border: '1.5px solid var(--ink)', overflow: 'hidden' }}>
-          {sorted.slice(0, 5).map((it, i) => (
+        <div className="bru-rail" style={{
+          display: 'flex', marginTop: 12, border: '1.5px solid var(--ink)',
+          overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin',
+        }}>
+          {sorted.map((it, i) => (
             <div key={it.id} style={{
-              flex: '1 1 0', minWidth: 0, aspectRatio: '1',
-              display: 'grid', placeItems: 'center', padding: 4,
+              flex: '0 0 calc(25% - 0.5px)',
+              boxSizing: 'border-box', aspectRatio: '1',
+              display: 'grid', placeItems: 'center', padding: 8,
               borderLeft: i > 0 ? '1px solid var(--line-soft)' : 'none',
             }}>
               <Thumb item={it} fill />
             </div>
+          ))}
+          {/* fill empty slots so a 2- or 3-item outfit still spans the whole rail */}
+          {sorted.length < 4 && Array.from({ length: 4 - sorted.length }).map((_, i) => (
+            <div key={`empty-${i}`} style={{
+              flex: '0 0 calc(25% - 0.5px)',
+              boxSizing: 'border-box', aspectRatio: '1',
+              borderLeft: '1px solid var(--line-soft)',
+            }} />
           ))}
         </div>
       </div>

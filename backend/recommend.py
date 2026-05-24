@@ -242,8 +242,20 @@ def recommend_outfits(
         outfit.extend(_pick_accessories(accessory_pool, max_n=2))
         rule_sc, bd = score_outfit(outfit, prefs)
 
-        covered = sum(1 for i in outfit if i.temp_min <= t <= i.temp_max)
-        bd["weather_fit"] = round(covered / max(1, len(outfit)), 3)
+        # Soft weather fit: per-item linear decay over a 10° tolerance window
+        # outside [temp_min, temp_max]. Items in range = 1.0; items off by 10°+ = 0.
+        # This is gentler than the old strict 0/1 check, so a wardrobe with no
+        # perfectly-rated piece still gets a meaningful partial score reflecting
+        # how close the chosen items are to the target.
+        TOL = 10.0
+        credits = []
+        for i in outfit:
+            if i.temp_min <= t <= i.temp_max:
+                credits.append(1.0)
+            else:
+                dist = (i.temp_min - t) if t < i.temp_min else (t - i.temp_max)
+                credits.append(max(0.0, 1.0 - dist / TOL))
+        bd["weather_fit"] = round(sum(credits) / max(1, len(outfit)), 3)
         bd["t_target"]    = round(t, 1)
         bd["raw_rule_score"] = rule_sc
 

@@ -68,7 +68,7 @@ export default function Profile() {
       const u = r.data
       setLocation({ city: u.city ?? '', latitude: u.latitude != null ? String(u.latitude) : '', longitude: u.longitude != null ? String(u.longitude) : '' })
       const cached = JSON.parse(localStorage.getItem('user') || '{}')
-      const merged = { ...cached, name: u.name, email: u.email, role: u.role, city: u.city, avatar_url: u.avatar_url, created_at: u.created_at }
+      const merged = { ...cached, name: u.name, email: u.email, role: u.role, city: u.city, avatar_url: u.avatar_url, created_at: u.created_at, email_verified: u.email_verified }
       localStorage.setItem('user', JSON.stringify(merged))
       setUser(merged)
       setAccount({ name: u.name || '', email: u.email || '' })
@@ -136,6 +136,7 @@ export default function Profile() {
       const updated = { ...user, city: res.data.city }
       localStorage.setItem('user', JSON.stringify(updated))
       setUser(updated)
+      window.dispatchEvent(new Event('weather:changed'))
       setLocMsg({ type: 'success', text: 'Location updated' })
       setTimeout(() => setLocMsg(null), 2500)
     } catch (e) {
@@ -207,7 +208,7 @@ export default function Profile() {
       setTimeout(() => setSaved(false), 2500)
     } finally { setSaving(false) }
   }
-  const emailVerified = user.email_verified_at != null
+  const emailVerified = user.email_verified === true
 
   return (
     <div className="bru-page">

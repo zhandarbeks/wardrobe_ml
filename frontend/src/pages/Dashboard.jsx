@@ -137,6 +137,7 @@ export default function Dashboard() {
     setCitySuggestions([]); setCity(''); setShowCityInput(false)
     const cityName = s.state ? `${s.name}, ${s.state}, ${s.country}` : `${s.name}, ${s.country}`
     await api.post('/api/v1/weather/location', { lat: s.lat, lon: s.lon, city: cityName })
+    window.dispatchEvent(new Event('weather:changed'))
     load()
   }
   const detectLocation = () => {
@@ -151,6 +152,7 @@ export default function Dashboard() {
           if (r.data) cityName = r.data.state ? `${r.data.name}, ${r.data.state}, ${r.data.country}` : `${r.data.name}, ${r.data.country}`
         } catch {}
         await api.post('/api/v1/weather/location', { lat, lon, city: cityName })
+        window.dispatchEvent(new Event('weather:changed'))
         setGeoLoading(false); load()
       },
       () => setGeoLoading(false),

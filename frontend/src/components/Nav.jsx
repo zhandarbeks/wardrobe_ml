@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import api from '../api'
 
@@ -13,14 +13,27 @@ function todayStamp() {
 export default function Nav() {
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   const navigate = useNavigate()
+  const location = useLocation()
   const [w, setW] = useState(null)
   const [stats, setStats] = useState(null)
   const [mode, setMode] = useState(() => localStorage.getItem('tt_mode') || 'day')
 
+  // Refetch weather + stats on every route change (cheap — backend caches 30min).
+  // Also listen for 'weather:changed' / 'wardrobe:changed' events so that
+  // mutations within the same page (picking a city on Dashboard, adding an
+  // item) update the sub-bar immediately without needing a route change.
   useEffect(() => {
-    api.get('/api/v1/weather/current').then(r => setW(r.data)).catch(() => {})
-    api.get('/api/v1/wardrobe/stats').then(r => setStats(r.data)).catch(() => {})
-  }, [])
+    const refetchWeather = () => api.get('/api/v1/weather/current').then(r => setW(r.data)).catch(() => {})
+    const refetchStats   = () => api.get('/api/v1/wardrobe/stats').then(r => setStats(r.data)).catch(() => {})
+    refetchWeather()
+    refetchStats()
+    window.addEventListener('weather:changed',  refetchWeather)
+    window.addEventListener('wardrobe:changed', refetchStats)
+    return () => {
+      window.removeEventListener('weather:changed',  refetchWeather)
+      window.removeEventListener('wardrobe:changed', refetchStats)
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-mode', mode)
@@ -28,6 +41,7 @@ export default function Nav() {
   }, [mode])
 
   const toggleMode = () => setMode(m => m === 'night' ? 'day' : 'night')
+  const hasCity = w && w.city && w.city !== '—'
 
   const logout = () => {
     localStorage.removeItem('token')
@@ -69,9 +83,15 @@ export default function Nav() {
       </header>
       <div className="bru-sub">
         <span>
-          {w
-            ? `${(w.city || '—').toUpperCase()} · ${Math.round(w.temp ?? 0)}° · WIND ${(w.wind_speed ?? 0).toFixed(0)} m/s · RAIN ${Math.round((w.pop ?? 0) * 100)}%`
-            : 'WEATHER —'}
+          {!w ? (
+            'WEATHER —'
+          ) : hasCity ? (
+            `${w.city.toUpperCase()} · ${Math.round(w.temp ?? 0)}° · WIND ${(w.wind_speed ?? 0).toFixed(0)} m/s · RAIN ${Math.round((w.pop ?? 0) * 100)}%`
+          ) : (
+            <NavLink to="/profile" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+              SET YOUR CITY IN PROFILE ⟶
+            </NavLink>
+          )}
         </span>
         <span>
           {stats

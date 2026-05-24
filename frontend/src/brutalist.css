@@ -58,6 +58,13 @@ body {
 .bru-rule { border-top: 1px solid var(--ink); }
 .bru-rule-thick { border-top: 2px solid var(--ink); }
 .bru-card { border: 1.5px solid var(--ink); padding: 18px; background: var(--paper); }
+
+/* Horizontal scrolling item rail — clean scrollbar */
+.bru-rail::-webkit-scrollbar { height: 6px; }
+.bru-rail::-webkit-scrollbar-track { background: transparent; }
+.bru-rail::-webkit-scrollbar-thumb { background: var(--ink); }
+.bru-rail { scroll-snap-type: x mandatory; }
+.bru-rail > * { scroll-snap-align: start; }
 .bru-btn {
   height: 40px; padding: 0 22px; background: transparent;
   border: 1.5px solid var(--ink);

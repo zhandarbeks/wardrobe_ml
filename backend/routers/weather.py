@@ -1,3 +1,4 @@
+import asyncio
 import time
 import os
 import httpx
@@ -18,17 +19,43 @@ TTL = 1800
 
 
 async def _fetch_weather(lat: float, lon: float) -> dict:
+    """Fetch current weather + nearest-forecast precipitation probability.
+
+    OpenWeatherMap's /data/2.5/weather (current) does NOT include `pop`;
+    only the 3-hourly /data/2.5/forecast endpoint does. We call both in
+    parallel and merge — first forecast slot's pop is "rain probability
+    in the next ≤3 hours".
+    """
     async with httpx.AsyncClient(timeout=10.0) as c:
-        r = await c.get(
+        current_task = c.get(
             "https://api.openweathermap.org/data/2.5/weather",
             params={"lat": lat, "lon": lon, "appid": KEY, "units": "metric"},
         )
-    d = r.json()
+        forecast_task = c.get(
+            "https://api.openweathermap.org/data/2.5/forecast",
+            params={"lat": lat, "lon": lon, "appid": KEY, "units": "metric", "cnt": 1},
+        )
+        r_current, r_forecast = await asyncio.gather(
+            current_task, forecast_task, return_exceptions=True,
+        )
+
+    d = r_current.json() if not isinstance(r_current, Exception) else {}
+
+    pop = 0.0
+    if not isinstance(r_forecast, Exception):
+        try:
+            fc = r_forecast.json()
+            slots = fc.get("list", [])
+            if slots:
+                pop = float(slots[0].get("pop", 0))
+        except Exception:
+            pop = 0.0
+
     return {
         "temp": d["main"]["temp"],
         "feels_like": d["main"]["feels_like"],
         "wind_speed": d["wind"]["speed"],
-        "pop": 0,
+        "pop": pop,
         "description": d["weather"][0]["description"],
         "icon": d["weather"][0]["icon"],
         "city": d["name"],
