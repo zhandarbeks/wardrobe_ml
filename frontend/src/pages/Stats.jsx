@@ -78,7 +78,7 @@ export default function Stats() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, border: '1.5px solid var(--ink)', marginTop: 18 }}>
+      <div className="bru-stats-kpi" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, border: '1.5px solid var(--ink)', marginTop: 18 }}>
         {[
           ['TOTAL ITEMS', stats.total],
           ['EVER WORN', `${stats.items_ever_worn} (${wornPct}%)`],
@@ -92,7 +92,7 @@ export default function Stats() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 18 }}>
+      <div className="bru-stack-mobile" style={{ gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 18 }}>
         <div className="bru-card">
           <div className="bru-mono" style={{ marginBottom: 10 }}>BY CATEGORY</div>
           {catEntries.map(([l, v]) => <BarRow key={l} label={l} value={v} max={catMax} />)}
@@ -108,7 +108,7 @@ export default function Stats() {
         {colorEntries.map(([l, v]) => <BarRow key={l} label={l} value={v} max={colorMax} color={COLOR_HEX[l] || 'var(--accent)'} />)}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 18 }}>
+      <div className="bru-stack-mobile" style={{ gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 18 }}>
         <div className="bru-card">
           <div className="bru-mono" style={{ marginBottom: 10 }}>MOST WORN</div>
           {stats.most_worn.length === 0

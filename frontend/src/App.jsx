@@ -12,6 +12,8 @@ import Stats from './pages/Stats'
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'
 import VerifyEmail from './pages/VerifyEmail'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 
 function PrivateRoute({ children }) {
   return localStorage.getItem('token') ? children : <Navigate to="/login" replace />
@@ -32,7 +34,9 @@ export default function App() {
       <Routes>
         <Route path="/login"        element={<Login />} />
         <Route path="/register"     element={<Register />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/verify-email"    element={<VerifyEmail />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password"  element={<ResetPassword />} />
         <Route path="/onboarding" element={<PrivateRoute><Onboarding /></PrivateRoute>} />
         <Route path="/"           element={<PrivateRoute><Dashboard /></PrivateRoute>} />
         <Route path="/wardrobe"   element={<PrivateRoute><Wardrobe /></PrivateRoute>} />

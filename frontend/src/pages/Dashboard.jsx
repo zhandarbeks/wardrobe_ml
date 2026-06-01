@@ -215,7 +215,7 @@ export default function Dashboard() {
         Your <em style={{ color: 'var(--accent)' }}>look</em> for today.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 340px) 1fr minmax(280px, 360px)', gap: 18, marginTop: 28 }}>
+      <div className="bru-stack-mobile" style={{ gridTemplateColumns: 'minmax(280px, 340px) 1fr minmax(280px, 360px)', gap: 18, marginTop: 28 }}>
 
         {/* LEFT: weather + actions */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>

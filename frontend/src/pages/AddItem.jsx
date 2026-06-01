@@ -430,7 +430,7 @@ export default function AddItem() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 18, alignItems: 'start' }}>
+      <div className="bru-stack-mobile" style={{ gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 18, alignItems: 'start' }}>
         {/* Left — image preview / drop zone */}
         <div>
           <input

@@ -49,7 +49,7 @@ export default function Login() {
               autoFocus
             />
           </div>
-          <div style={{ marginBottom: 22 }}>
+          <div style={{ marginBottom: 8 }}>
             <label className="bru-label">Password</label>
             <input
               className="bru-input"
@@ -59,6 +59,13 @@ export default function Login() {
               placeholder="••••••••"
               required
             />
+          </div>
+          <div style={{ textAlign: 'right', marginBottom: 18 }}>
+            <Link
+              to="/forgot-password"
+              style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.1em', color: 'var(--mute)', textDecoration: 'underline' }}>
+              FORGOT PASSWORD?
+            </Link>
           </div>
           <button className="bru-btn bru-btn-accent" style={{ width: '100%' }} disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in ⟶'}

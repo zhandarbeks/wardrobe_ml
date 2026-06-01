@@ -217,7 +217,7 @@ export default function Profile() {
         <div className="bru-serif" style={{ fontSize: 64, lineHeight: 0.95 }}>The <em style={{ color: 'var(--accent)' }}>subject</em>.</div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 18, marginTop: 18 }}>
+      <div className="bru-stack-mobile" style={{ gridTemplateColumns: '320px 1fr', gap: 18, marginTop: 18 }}>
         {/* LEFT — identity */}
         <div className="bru-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 20 }}>
           <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadAvatar} style={{ display: 'none' }} />

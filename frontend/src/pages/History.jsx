@@ -101,7 +101,7 @@ export default function History() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 18, marginTop: 18 }}>
+      <div className="bru-stack-mobile" style={{ gridTemplateColumns: '1fr 320px', gap: 18, marginTop: 18 }}>
         {/* Calendar */}
         <div className="bru-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>

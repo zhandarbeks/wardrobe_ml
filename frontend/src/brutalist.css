@@ -105,13 +105,66 @@ body {
 .bru-scroll::-webkit-scrollbar { width: 4px; }
 .bru-scroll::-webkit-scrollbar-thumb { background: var(--line-soft); }
 
+/* ── Layout helpers for responsive grids ───────────────────────── */
+/* Apply `.bru-stack-mobile` to any container with a fixed multi-column
+   inline grid; below 768px it collapses to a single stacked column. */
+.bru-stack-mobile { display: grid; }
+
 /* ── Mobile responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .bru-mast { padding: 14px 16px; flex-wrap: wrap; gap: 12px; }
+  /* Masthead — wrap and tighten */
+  .bru-mast { padding: 14px 16px; flex-wrap: wrap; gap: 10px; row-gap: 8px; }
   .bru-mast .bru-logo { font-size: 22px; }
   .bru-mast .bru-meta { display: none; }
-  .bru-nav { font-size: 10px; gap: 10px; flex-wrap: wrap; width: 100%; }
-  .bru-sub { padding: 6px 16px; font-size: 9px; top: 60px; flex-wrap: wrap; gap: 8px; }
+  .bru-nav {
+    font-size: 10px; gap: 12px; width: 100%;
+    overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .bru-nav::-webkit-scrollbar { display: none; }
+  .bru-nav a { white-space: nowrap; }
+
+  /* Sub-bar — single line scrollable */
+  .bru-sub {
+    padding: 6px 16px; font-size: 9px; top: 56px;
+    flex-wrap: nowrap; overflow-x: auto; gap: 14px;
+    scrollbar-width: none;
+  }
+  .bru-sub::-webkit-scrollbar { display: none; }
+
+  /* Page chrome */
   .bru-page { padding: 16px; }
   .bru-card { padding: 14px; }
+
+  /* Editorial headings — desktop uses 56–64px; that's massive on phones */
+  .bru-serif[style*="font-size: 64px"],
+  .bru-serif[style*="font-size: 56px"] { font-size: 36px !important; line-height: 1 !important; }
+  .bru-serif[style*="font-size: 48px"] { font-size: 32px !important; }
+  .bru-serif[style*="font-size: 42px"] { font-size: 30px !important; }
+  .bru-serif[style*="font-size: 38px"] { font-size: 28px !important; }
+
+  /* Collapse our flagged multi-column grids to a single column */
+  .bru-stack-mobile { grid-template-columns: 1fr !important; }
+
+  /* Score-breakdown formula uses nowrap — let it wrap on small screens */
+  [class~="bru-mono"] { word-break: break-word; }
+
+  /* Tables in Admin / wider cards — let them scroll horizontally */
+  .bru-card table { font-size: 11px; }
+
+  /* Larger tap target for tag/chip filters */
+  .bru-tag { padding: 6px 10px; font-size: 9px; }
+}
+
+/* Extra-narrow phones (<=400px) — make form 2-col grids stack */
+@media (max-width: 400px) {
+  .bru-form-2col { grid-template-columns: 1fr !important; }
+}
+
+/* Stats KPI grid — 4 across desktop, 2 across mobile */
+@media (max-width: 768px) {
+  .bru-stats-kpi { grid-template-columns: 1fr 1fr !important; }
+  .bru-stats-kpi > div:nth-child(odd)  { border-left: none !important; }
+  .bru-stats-kpi > div:nth-child(even) { border-left: 1.5px solid var(--ink) !important; }
+  .bru-stats-kpi > div:nth-child(n+3)  { border-top: 1.5px solid var(--ink); }
 }

@@ -96,6 +96,31 @@ def _send(to: str, subject: str, text_body: str, html_body: Optional[str] = None
             _send_console(to, subject, text_body, html_body)
 
 
+def send_password_reset_email(user, token: str) -> str:
+    link = f"{_frontend_url()}/reset-password?token={token}"
+    subject = "Reset your T*T password"
+    text_body = (
+        f"Hi {user.name or 'there'},\n\n"
+        f"A password reset was requested for your T*T account.\n"
+        f"Open this link to choose a new password:\n\n"
+        f"  {link}\n\n"
+        f"The link expires in 1 hour. If you did not request this, ignore this email.\n"
+    )
+    html_body = (
+        f"<p>Hi {user.name or 'there'},</p>"
+        f"<p>A password reset was requested for your <strong>T*T</strong> account. "
+        f"Click below to choose a new password:</p>"
+        f'<p><a href="{link}" '
+        f'style="display:inline-block;padding:10px 20px;background:#6FA000;'
+        f'color:#0A0A0A;text-decoration:none;font-weight:600;">'
+        f'Reset password</a></p>'
+        f'<p>Or copy this link: <a href="{link}">{link}</a></p>'
+        f"<p style='color:#6b7280;font-size:13px;'>Expires in 1 hour.</p>"
+    )
+    _send(user.email, subject, text_body, html_body)
+    return link
+
+
 def send_verification_email(user, token: str) -> str:
     """Compose & send the email-verification message.
     Returns the verification URL so the caller can return it in dev mode.

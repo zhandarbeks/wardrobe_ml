@@ -8,6 +8,4 @@ build
 *.h5
 *.pkl
 ml-service/models/
-
-
-backend/scripts
+backups/

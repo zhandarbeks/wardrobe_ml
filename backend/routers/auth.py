@@ -13,7 +13,7 @@ from database import get_db
 from models import User, EmailVerificationToken
 from auth import hash_password, verify_password, create_access_token
 from deps import get_current_user
-from email_service import send_verification_email
+from email_service import send_verification_email, send_password_reset_email
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -153,6 +153,80 @@ def resend_verification(
     if EXPOSE_DEV_LINK:
         resp["dev_verification_link"] = link
     return resp
+
+
+RESET_TOKEN_TTL_MIN = 60
+
+
+class ForgotPasswordBody(BaseModel):
+    email: EmailStr
+
+
+@router.post("/forgot-password")
+def forgot_password(body: ForgotPasswordBody, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == body.email).first()
+    resp = {"sent": True}
+    if not user or not user.is_active:
+        return resp
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=RESEND_RATE_WINDOW_MIN)
+    recent = db.query(EmailVerificationToken).filter(
+        EmailVerificationToken.user_id == user.id,
+        EmailVerificationToken.purpose == "reset",
+        EmailVerificationToken.created_at >= cutoff,
+    ).count()
+    if recent >= RESEND_RATE_MAX_TOKENS:
+        raise HTTPException(429, f"Too many reset requests. Try again in {RESEND_RATE_WINDOW_MIN} minutes.")
+
+    tok = EmailVerificationToken(
+        token      = secrets.token_urlsafe(32),
+        user_id    = user.id,
+        purpose    = "reset",
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_TTL_MIN),
+    )
+    db.add(tok)
+    db.commit()
+    db.refresh(tok)
+
+    try:
+        link = send_password_reset_email(user, tok.token)
+        if EXPOSE_DEV_LINK:
+            resp["dev_reset_link"] = link
+    except Exception as e:
+        print(f"[forgot-password] failed to send reset email: {e}")
+    return resp
+
+
+class ResetPasswordBody(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/reset-password")
+def reset_password(body: ResetPasswordBody, db: Session = Depends(get_db)):
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+
+    tok = db.query(EmailVerificationToken).filter(
+        EmailVerificationToken.token == body.token,
+        EmailVerificationToken.purpose == "reset",
+    ).first()
+    if tok is None:
+        raise HTTPException(400, "Invalid or unknown reset token")
+    if tok.used_at is not None:
+        raise HTTPException(400, "Reset token already used")
+    if tok.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(400, "Reset token has expired — request a new one")
+
+    user = db.query(User).filter(User.id == tok.user_id).first()
+    if user is None or not user.is_active:
+        raise HTTPException(400, "Account no longer exists")
+
+    user.password_hash = hash_password(body.new_password)
+    tok.used_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+    return {"reset": True, "user": _user_dict(user)}
 
 
 @router.post("/login")
